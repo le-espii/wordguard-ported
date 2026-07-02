@@ -1,0 +1,33 @@
+/*
+ * Decompiled with CFR 0.152.
+ * 
+ * Could not load the following classes:
+ *  javax.annotation.Nullable
+ */
+package com.sk89q.worldedit.world.storage;
+
+import com.sk89q.worldedit.world.storage.ChunkStoreException;
+import javax.annotation.Nullable;
+
+public class MissingWorldException
+extends ChunkStoreException {
+    private String worldName;
+
+    public MissingWorldException() {
+    }
+
+    public MissingWorldException(String worldName) {
+        this.worldName = worldName;
+    }
+
+    public MissingWorldException(String msg, String worldName) {
+        super(msg);
+        this.worldName = worldName;
+    }
+
+    @Nullable
+    public String getWorldName() {
+        return this.worldName;
+    }
+}
+

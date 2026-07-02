@@ -1,0 +1,19 @@
+Summary for e:\01 - PROYECTOS\World Guard Neo Forge\Referencias\worldedit-bukkit-7.3.9.jar
+Decompiled with CFR 0.152
+
+
+com.sk89q.wepif.NijiPermissionsResolver
+----------------------------
+
+hasPermission(java.lang.String java.lang.String )
+  Loose catch block
+inGroup(java.lang.String java.lang.String )
+  Loose catch block
+
+
+org.enginehub.linbus.stream.impl.LinNbtReader
+----------------------------
+
+nextOrNull()
+  Unable to fully structure code
+  Could not resolve type clashes

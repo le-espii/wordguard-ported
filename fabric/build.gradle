@@ -1,0 +1,66 @@
+plugins {
+    id 'fabric-loom' version '1.7-SNAPSHOT'
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
+    mappings loom.layered() {
+        officialMojangMappings()
+        parchment("org.parchmentmc.data:parchment-${rootProject.parchment_mc_version}:${rootProject.parchment_version}@zip")
+    }
+
+    modImplementation "net.fabricmc:fabric-loader:${rootProject.fabric_loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_version}"
+
+    // Dependemos del módulo común
+    implementation project(path: ":common", configuration: "namedElements")
+    
+    // Dependencia del Mod de WorldEdit para Fabric (Local JAR)
+    modImplementation files("../Referencias/worldedit-mod-7.3.8.jar")
+    
+    // Shading de worldguard-core (incluirlo en el mod jar final)
+    implementation("com.sk89q.worldguard:worldguard-core:${rootProject.worldguard_core_version}") {
+        exclude group: 'com.sk89q.worldedit', module: 'worldedit-core'
+        exclude group: 'com.google.guava', module: 'guava'
+        exclude group: 'com.google.code.gson', module: 'gson'
+        exclude group: 'it.unimi.dsi', module: 'fastutil'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-api'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-bom'
+    }
+    include("com.sk89q.worldguard:worldguard-core:${rootProject.worldguard_core_version}") {
+        exclude group: 'com.sk89q.worldedit', module: 'worldedit-core'
+        exclude group: 'com.google.guava', module: 'guava'
+        exclude group: 'com.google.code.gson', module: 'gson'
+        exclude group: 'it.unimi.dsi', module: 'fastutil'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-api'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-bom'
+    }
+
+    // Incluir snakeyaml para Fabric
+    implementation "org.yaml:snakeyaml:2.0"
+    include "org.yaml:snakeyaml:2.0"
+}
+
+processResources {
+    inputs.property "version", rootProject.mod_version
+    inputs.property "id", rootProject.mod_id
+    inputs.property "name", rootProject.mod_name
+    inputs.property "description", rootProject.mod_description
+
+    filesMatching("fabric.mod.json") {
+        expand "version": rootProject.mod_version,
+               "id": rootProject.mod_id,
+               "name": rootProject.mod_name,
+               "description": rootProject.mod_description
+    }
+}
+
+jar {
+    archiveFileName = "worldguard-fabric-1.21.1-1.0.5.jar"
+    from project(":common").sourceSets.main.output
+}
+
+tasks.named("remapJar") {
+    archiveFileName = "worldguard-fabric-1.21.1-1.0.5.jar"
+}
+

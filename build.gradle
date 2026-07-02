@@ -1,0 +1,25 @@
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'eclipse'
+    apply plugin: 'idea'
+
+    version = rootProject.mod_version
+    group = rootProject.mod_group_id
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
+    }
+
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.compilerArgs << '-Xlint:unchecked'
+    }
+
+    repositories {
+        mavenCentral()
+        maven { url = "https://maven.enginehub.org/repo/" }
+        maven { url = "https://maven.parchmentmc.org" }
+    }
+}

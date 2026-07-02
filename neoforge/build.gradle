@@ -1,0 +1,83 @@
+plugins {
+    id 'net.neoforged.moddev' version '2.0.78'
+}
+
+neoForge {
+    version = rootProject.neoforge_version
+
+    parchment {
+        mappingsVersion = rootProject.parchment_version
+        minecraftVersion = rootProject.parchment_mc_version
+    }
+
+    mods {
+        "${rootProject.mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+configurations {
+    shade
+    implementation.extendsFrom shade
+}
+
+dependencies {
+    implementation project(":common")
+    
+    // Dependencia del Mod de WorldEdit para NeoForge (Local JAR)
+    implementation files("../Referencias/worldedit-mod-7.3.8.jar")
+    
+    // Shading de worldguard-core (incluirlo en el mod jar final)
+    shade("com.sk89q.worldguard:worldguard-core:${rootProject.worldguard_core_version}") {
+        exclude group: 'com.sk89q.worldedit', module: 'worldedit-core'
+        exclude group: 'com.google.guava', module: 'guava'
+        exclude group: 'com.google.code.gson', module: 'gson'
+        exclude group: 'it.unimi.dsi', module: 'fastutil'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-api'
+        exclude group: 'org.apache.logging.log4j', module: 'log4j-bom'
+    }
+}
+
+tasks.withType(ProcessResources).configureEach {
+    var replaceProperties = [
+        minecraft_version      : rootProject.minecraft_version,
+        neoforge_version       : rootProject.neoforge_version,
+        mod_id                 : rootProject.mod_id,
+        mod_name               : rootProject.mod_name,
+        mod_version            : rootProject.mod_version,
+        mod_authors            : rootProject.mod_authors,
+        mod_description        : rootProject.mod_description
+    ]
+    inputs.properties replaceProperties
+
+    filesMatching(['META-INF/neoforge.mods.toml']) {
+        expand replaceProperties
+    }
+}
+
+jar {
+    archiveFileName = "worldguard-neoforge-1.21.1-1.0.5.jar"
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+
+    // Empaquetar clases comunes
+    from project(":common").sourceSets.main.output
+
+    // Empaquetar clases de worldguard-core
+    from {
+        configurations.shade.collect { it.isDirectory() ? it : zipTree(it) }
+    } {
+        exclude "module-info.class"
+        exclude "META-INF/versions/*/module-info.class"
+        exclude "META-INF/maven/**"
+        exclude "META-INF/LICENSE*"
+        exclude "META-INF/NOTICE*"
+    }
+    
+    manifest {
+        attributes([
+            "MixinConfigs": "worldguard.mixins.json"
+        ])
+    }
+}
+

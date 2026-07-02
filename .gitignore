@@ -1,0 +1,34 @@
+# Archivos temporales y de compilación de Gradle
+.gradle/
+build/
+*/build/
+bin/
+*/bin/
+out/
+*/out/
+
+# Configuración de IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+.factorypath
+*.suo
+*.user
+
+# Carpetas de ejecución del juego en desarrollo (run)
+run/
+*/run/
+
+# Logs y reportes
+*.log
+.gradle-test-kit/
+
+# Archivos del sistema operativo
+Thumbs.db
+desktop.ini
+.DS_Store

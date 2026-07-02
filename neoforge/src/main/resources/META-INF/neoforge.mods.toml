@@ -1,0 +1,26 @@
+modLoader="javafml"
+loaderVersion="[2,)"
+license="LGPL-3.0"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="${mod_authors}"
+description="${mod_description} Apoya al desarrollador en Patreon: https://www.patreon.com/cw/Le_Espii"
+displayURL="https://enginehub.org"
+issueTrackerURL="https://github.com/EngineHub/WorldGuard/issues"
+
+[[dependencies.worldguard]]
+modId="neoforge"
+type="required"
+versionRange="[21,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.worldguard]]
+modId="worldedit"
+type="required"
+versionRange="[7.3.8,)"
+ordering="BEFORE"
+side="BOTH"

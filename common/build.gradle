@@ -1,0 +1,23 @@
+plugins {
+    id 'fabric-loom' version '1.7-SNAPSHOT'
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
+    mappings loom.layered() {
+        officialMojangMappings()
+        parchment("org.parchmentmc.data:parchment-${rootProject.parchment_mc_version}:${rootProject.parchment_version}@zip")
+    }
+    
+    modImplementation "net.fabricmc:fabric-loader:${rootProject.fabric_loader_version}"
+
+    // WorldGuard Core de Maven y WorldEdit Mod Local
+    implementation "com.sk89q.worldguard:worldguard-core:${rootProject.worldguard_core_version}"
+    implementation files("../Referencias/worldedit-mod-7.3.8.jar")
+}
+
+// Desactivamos la tarea de remapeado automático para el módulo común para evitar conflictos
+// ya que solo queremos las clases para compilar los submódulos específicos.
+tasks.named('remapJar') {
+    enabled = false
+}

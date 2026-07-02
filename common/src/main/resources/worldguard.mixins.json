@@ -1,0 +1,27 @@
+{
+  "required": true,
+  "package": "com.sk89q.worldguard.mod.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ServerPlayerGameModeMixin",
+    "ExplosionMixin",
+    "PistonBaseBlockMixin",
+    "FlowingFluidMixin",
+    "EntityMixin",
+    "PlayerMixin",
+    "ItemEntityMixin",
+    "ServerPlayerMixin",
+    "ServerLevelMixin",
+    "BiomeMixin",
+    "BlockBehaviourMixin",
+    "FarmBlockMixin",
+    "EndermanMixin",
+    "EndermanLeaveBlockGoalMixin",
+    "SnowGolemMixin",
+    "RavagerMixin",
+    "CommandsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

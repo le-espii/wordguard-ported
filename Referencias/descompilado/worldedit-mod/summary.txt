@@ -1,0 +1,31 @@
+Summary for e:\01 - PROYECTOS\World Guard Neo Forge\Referencias\worldedit-mod-7.3.8.jar
+Decompiled with CFR 0.152
+
+
+org.enginehub.linbus.stream.impl.LinNbtReader
+----------------------------
+
+nextOrNull()
+  Unable to fully structure code
+  Could not resolve type clashes
+
+
+org.mozilla.javascript.commonjs.module.provider.CachingModuleScriptProviderBase
+----------------------------
+
+getModuleScript(org.mozilla.javascript.Context java.lang.String java.net.URI java.net.URI org.mozilla.javascript.Scriptable )
+  Loose catch block
+
+
+org.mozilla.javascript.regexp.NativeRegExp
+----------------------------
+
+executeREBytecode(org.mozilla.javascript.regexp.REGlobalData java.lang.String int )
+  Unable to fully structure code
+
+
+org.mozilla.javascript.xmlimpl.XmlProcessor
+----------------------------
+
+toXml(java.lang.String java.lang.String )
+  Loose catch block

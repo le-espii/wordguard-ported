@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "${id}",
+  "version": "${version}",
+  "name": "${name}",
+  "description": "${description}",
+  "authors": [
+    "Espii",
+    "EngineHub"
+  ],
+  "contact": {
+    "homepage": "https://enginehub.org",
+    "sources": "https://github.com/EngineHub/WorldGuard",
+    "patreon": "https://www.patreon.com/cw/Le_Espii"
+  },
+  "license": "LGPL-3.0",
+  "icon": "assets/worldguard/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.sk89q.worldguard.fabric.FabricWorldGuardMod"
+    ]
+  },
+  "mixins": [
+    "worldguard.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.15.11",
+    "minecraft": ">=1.21.1",
+    "worldedit": ">=7.3.8"
+  }
+}
