@@ -13,13 +13,15 @@
     "ServerPlayerMixin",
     "ServerLevelMixin",
     "BiomeMixin",
-    "BlockBehaviourMixin",
+    "RandomTickBlocksMixin",
+    "FoodDataMixin",
     "FarmBlockMixin",
     "EndermanMixin",
     "EndermanLeaveBlockGoalMixin",
     "SnowGolemMixin",
     "RavagerMixin",
-    "CommandsMixin"
+    "CommandsMixin",
+    "FireBlockMixin"
   ],
   "injectors": {
     "defaultRequire": 1

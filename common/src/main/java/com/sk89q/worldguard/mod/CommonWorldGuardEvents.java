@@ -87,11 +87,11 @@ public class CommonWorldGuardEvents {
                 }
             }
 
-            // PVP
+            // PVP: a diferencia de los demás chequeos, el bypass de región NO exime el flag
+            // PVP en el WorldGuard original (RegionProtectionListener#isWhitelisted recibe un
+            // parámetro "pvp" que ignora el bypass para este caso concreto), así que aquí no
+            // se consulta hasBypass.
             if (localAttacker != null) {
-                if (WorldGuard.getInstance().getPlatform().getSessionManager().hasBypass(localAttacker, localAttacker.getWorld())) {
-                    return true;
-                }
                 boolean targetDeny = query.queryState(targetLoc, localAttacker, Flags.PVP) == com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
                 boolean attackerDeny = query.queryState(localAttacker.getLocation(), localAttacker, Flags.PVP) == com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
                 if (targetDeny || attackerDeny) {
@@ -114,7 +114,8 @@ public class CommonWorldGuardEvents {
             }
         }
 
-        // 2. Ataque de jugadores a entidades protegidas
+        // 2. Ataque de jugadores a entidades protegidas (chequeos de tipo "build permission":
+        // aquí el bypass de región sí exime, igual que en el original).
         if (localAttacker != null) {
             if (WorldGuard.getInstance().getPlatform().getSessionManager().hasBypass(localAttacker, localAttacker.getWorld())) {
                 return true;
@@ -319,17 +320,37 @@ public class CommonWorldGuardEvents {
         if (block instanceof net.minecraft.world.level.block.MyceliumBlock) {
             return query.queryState(loc, null, Flags.MYCELIUM_SPREAD) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
-        
-        // Cultivos, brotes, etc.
-        String className = block.getClass().getName();
-        if (block instanceof net.minecraft.world.level.block.CropBlock 
-                || block instanceof net.minecraft.world.level.block.SaplingBlock 
-                || className.contains("Crop") 
-                || className.contains("Stem") 
-                || className.contains("Sapling") 
-                || className.contains("SweetBerry") 
-                || className.contains("Cocoa")) {
+
+        // Cultivos, brotes, tallos, cocoa, bayas dulces, flor antorcha, nether wart.
+        if (block instanceof net.minecraft.world.level.block.CropBlock
+                || block instanceof net.minecraft.world.level.block.StemBlock
+                || block instanceof net.minecraft.world.level.block.SaplingBlock
+                || block instanceof net.minecraft.world.level.block.NetherWartBlock
+                || block instanceof net.minecraft.world.level.block.SweetBerryBushBlock
+                || block instanceof net.minecraft.world.level.block.CocoaBlock
+                || block instanceof net.minecraft.world.level.block.TorchflowerCropBlock) {
             return query.queryState(loc, null, Flags.CROP_GROWTH) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+        }
+
+        // Enredaderas trepando (Flags.VINE_GROWTH) — sin gancho antes de la auditoría (H11).
+        if (block instanceof net.minecraft.world.level.block.VineBlock) {
+            return query.queryState(loc, null, Flags.VINE_GROWTH) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+        }
+
+        // Crecimiento de amatista y goteo de dripstone (Flags.ROCK_GROWTH) — ídem.
+        if (block instanceof net.minecraft.world.level.block.BuddingAmethystBlock
+                || block instanceof net.minecraft.world.level.block.PointedDripstoneBlock) {
+            return query.queryState(loc, null, Flags.ROCK_GROWTH) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+        }
+
+        // Propagación de hongos pequeños (Flags.MUSHROOMS) — ídem.
+        if (block instanceof net.minecraft.world.level.block.MushroomBlock) {
+            return query.queryState(loc, null, Flags.MUSHROOMS) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+        }
+
+        // Oxidación de cobre sin encerar (Flags.COPPER_FADE) — ídem.
+        if (block instanceof net.minecraft.world.level.block.WeatheringCopper) {
+            return query.queryState(loc, null, Flags.COPPER_FADE) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
 
         return true;

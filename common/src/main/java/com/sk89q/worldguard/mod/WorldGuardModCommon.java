@@ -1,5 +1,8 @@
 package com.sk89q.worldguard.mod;
 
+import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.context.CommandContext;
 import com.sk89q.minecraft.util.commands.CommandsManager;
 import com.sk89q.worldedit.extension.platform.Actor;
 import com.sk89q.worldguard.WorldGuard;
@@ -7,9 +10,20 @@ import com.sk89q.worldguard.commands.GeneralCommands;
 import com.sk89q.worldguard.commands.ProtectionCommands;
 import com.sk89q.worldguard.commands.ToggleCommands;
 import com.sk89q.worldguard.protection.flags.registry.SimpleFlagRegistry;
+import net.minecraft.commands.CommandSourceStack;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static net.minecraft.commands.Commands.argument;
+import static net.minecraft.commands.Commands.literal;
 
 public class WorldGuardModCommon {
     private static final Logger LOGGER = LogManager.getLogger("WorldGuard");
@@ -17,6 +31,27 @@ public class WorldGuardModCommon {
     private static CommandsManager<Actor> commands;
     private static MinecraftServer server;
     private static PlatformAdapter adapter;
+
+    /**
+     * Grupos de alias de comandos de nivel superior que WorldGuard registra por su cuenta
+     * (no como subcomandos de /wg). El primer elemento de cada grupo es el alias "canonico"
+     * que se le pasa a {@link CommandsManager}; el resto son alias adicionales que apuntan
+     * al mismo comando. Debe reflejar exactamente lo que registran GeneralCommands/
+     * ProtectionCommands/ToggleCommands en el plugin original (WorldGuard-Bukkit).
+     */
+    private static final String[][] COMMAND_GROUPS = {
+        {"region", "rg", "regions"},
+        {"worldguard", "wg"},
+        {"god"},
+        {"ungod"},
+        {"heal"},
+        {"slay"},
+        {"locate"},
+        {"stack", ";"},
+        {"stopfire"},
+        {"allowfire"},
+        {"halt-activity", "stoplag", "haltactivity"},
+    };
 
     public interface PlatformAdapter {
         com.sk89q.worldedit.world.World adaptWorld(net.minecraft.world.level.Level level);
@@ -29,7 +64,7 @@ public class WorldGuardModCommon {
 
         platform = new ModWorldGuardPlatform();
         WorldGuard.getInstance().setPlatform(platform);
-        
+
         // Registrar el CommandsManager para procesar los comandos clásicos
         commands = new CommandsManager<Actor>() {
             @Override
@@ -37,7 +72,7 @@ public class WorldGuardModCommon {
                 return actor.hasPermission(perm);
             }
         };
-        
+
         commands.setInjector(new com.sk89q.minecraft.util.commands.Injector() {
             @Override
             public Object getInstance(Class<?> clazz) {
@@ -53,11 +88,11 @@ public class WorldGuardModCommon {
                 }
             }
         });
-        
+
         commands.register(ToggleCommands.class);
         commands.register(ProtectionCommands.class);
         commands.register(GeneralCommands.class);
-        
+
         ((SimpleFlagRegistry) WorldGuard.getInstance().getFlagRegistry()).setInitialized(true);
         LOGGER.info("WorldGuard Mod Common initialized successfully.");
     }
@@ -86,10 +121,121 @@ public class WorldGuardModCommon {
         return commands;
     }
 
-    public static java.util.List<String> getSuggestions(net.minecraft.commands.CommandSourceStack source, String commandName, String argsString) {
-        java.util.List<String> suggestions = new java.util.ArrayList<>();
+    // ------------------------------------------------------------------
+    // Registro de comandos Brigadier (compartido entre Fabric y NeoForge)
+    // ------------------------------------------------------------------
+
+    /**
+     * Registra todos los comandos de nivel superior de WorldGuard (region/wg y los comandos
+     * "sueltos" como god/heal/slay/stopfire/etc.) en el dispatcher de Brigadier del servidor.
+     * Fabric y NeoForge obtienen el {@link CommandDispatcher} de forma distinta (callback vs
+     * evento), pero una vez obtenido, el árbol de comandos que se registra es idéntico en
+     * ambos loaders, así que esta lógica vive una sola vez aquí.
+     */
+    public static void registerAllCommands(CommandDispatcher<CommandSourceStack> dispatcher) {
+        for (String[] group : COMMAND_GROUPS) {
+            String canonicalName = group[0];
+            for (String alias : group) {
+                dispatcher.register(literal(alias)
+                    .then(argument("args", StringArgumentType.greedyString())
+                        .suggests(getSuggestionsProvider(canonicalName))
+                        .executes(context -> executeCommand(context, canonicalName, StringArgumentType.getString(context, "args")))
+                    )
+                    .executes(context -> executeCommand(context, canonicalName, ""))
+                );
+            }
+        }
+    }
+
+    private static int executeCommand(CommandContext<CommandSourceStack> context, String commandName, String argsString) {
+        CommandSourceStack source = context.getSource();
+
+        Actor actor;
+        if (source.getPlayer() != null) {
+            actor = WorldGuardModCommon.getAdapter().adaptPlayer(source.getPlayer());
+        } else {
+            actor = WorldGuardModCommon.getAdapter().adaptCommandSource(source);
+        }
+
+        String[] args = parseArguments(argsString);
+
+        if (commandName.equalsIgnoreCase("worldguard") && (args.length == 0 || args[0].equalsIgnoreCase("version") || args[0].equalsIgnoreCase("credits"))) {
+            source.sendSuccess(() -> Component.literal("§e========================================\n" +
+                                                      "§bWorldGuard Mod (NeoForge/Fabric 1.21.1)\n" +
+                                                      "§7Creado por EngineHub. Portado y adaptado por: §aEspii\n" +
+                                                      "§7Apoya a Espii en Patreon: §dhttps://www.patreon.com/cw/Le_Espii\n" +
+                                                      "§e========================================"), false);
+        }
+
+        try {
+            WorldGuardModCommon.getCommands().execute(commandName, args, actor, actor);
+            return 1;
+        } catch (com.sk89q.minecraft.util.commands.CommandPermissionsException e) {
+            source.sendFailure(Component.literal("§cNo tienes permiso para ejecutar este comando."));
+            return 0;
+        } catch (com.sk89q.minecraft.util.commands.CommandUsageException e) {
+            source.sendFailure(Component.literal("§c" + e.getMessage()));
+            if (e.getUsage() != null) {
+                source.sendFailure(Component.literal("§c" + e.getUsage()));
+            }
+            return 0;
+        } catch (Throwable t) {
+            LOGGER.error("Error executing command: " + commandName + " " + argsString, t);
+            source.sendFailure(Component.literal("§cError ejecutando el comando: " + t.getMessage()));
+            return 0;
+        }
+    }
+
+    /**
+     * Divide una cadena de argumentos respetando comillas dobles.
+     */
+    private static String[] parseArguments(String argsString) {
+        if (argsString == null || argsString.trim().isEmpty()) {
+            return new String[0];
+        }
+        List<String> list = new ArrayList<>();
+        Matcher m = Pattern.compile("([^\"]\\S*|\"[^\"]*\")\\s*").matcher(argsString);
+        while (m.find()) {
+            String arg = m.group(1);
+            if (arg.startsWith("\"") && arg.endsWith("\"")) {
+                arg = arg.substring(1, arg.length() - 1);
+            }
+            list.add(arg);
+        }
+        return list.toArray(new String[0]);
+    }
+
+    private static com.mojang.brigadier.suggestion.SuggestionProvider<CommandSourceStack> getSuggestionsProvider(String commandName) {
+        return (context, builder) -> {
+            String argsString = "";
+            try {
+                argsString = StringArgumentType.getString(context, "args");
+            } catch (IllegalArgumentException ignored) {}
+
+            List<String> suggestions = WorldGuardModCommon.getSuggestions(context.getSource(), commandName, argsString);
+
+            String input = context.getInput();
+            int lastSpace = input.lastIndexOf(' ');
+            int start = lastSpace == -1 ? 0 : lastSpace + 1;
+            int end = input.length();
+
+            List<com.mojang.brigadier.suggestion.Suggestion> list = new ArrayList<>();
+            for (String suggestion : suggestions) {
+                list.add(new com.mojang.brigadier.suggestion.Suggestion(
+                    com.mojang.brigadier.context.StringRange.between(start, end),
+                    suggestion
+                ));
+            }
+            return CompletableFuture.completedFuture(
+                com.mojang.brigadier.suggestion.Suggestions.create(input, list)
+            );
+        };
+    }
+
+    public static List<String> getSuggestions(net.minecraft.commands.CommandSourceStack source, String commandName, String argsString) {
+        List<String> suggestions = new ArrayList<>();
         if (argsString == null) argsString = "";
-        
+
         // Separar en palabras, manteniendo espacios al final
         String[] words;
         if (argsString.isEmpty()) {
@@ -102,16 +248,16 @@ public class WorldGuardModCommon {
         } else {
             words = argsString.split(" ");
         }
-        
+
         int wordCount = words.length;
         String lastWord = words[wordCount - 1].toLowerCase();
-        
+
         net.minecraft.server.level.ServerPlayer mcPlayer = null;
         try {
             mcPlayer = source.getPlayerOrException();
         } catch (Exception ignored) {}
-        
-        if (commandName.equalsIgnoreCase("worldguard") || commandName.equalsIgnoreCase("wg")) {
+
+        if (commandName.equalsIgnoreCase("worldguard")) {
             if (wordCount == 1) {
                 String[] subcommands = {"version", "reload", "report", "profile", "flushstates", "credits", "stopprofile"};
                 for (String sub : subcommands) {
@@ -120,7 +266,7 @@ public class WorldGuardModCommon {
                     }
                 }
             }
-        } else {
+        } else if (commandName.equalsIgnoreCase("region")) {
             // region / rg
             if (wordCount == 1) {
                 String[] subcommands = {
@@ -135,15 +281,15 @@ public class WorldGuardModCommon {
                 }
             } else if (wordCount == 2) {
                 String subcmd = words[0].toLowerCase();
-                if (subcmd.equals("flag") || subcmd.equals("info") || subcmd.equals("addmember") || 
-                    subcmd.equals("removemember") || subcmd.equals("addowner") || subcmd.equals("removeowner") || 
-                    subcmd.equals("delete") || subcmd.equals("remove") || subcmd.equals("redefine") || 
+                if (subcmd.equals("flag") || subcmd.equals("info") || subcmd.equals("addmember") ||
+                    subcmd.equals("removemember") || subcmd.equals("addowner") || subcmd.equals("removeowner") ||
+                    subcmd.equals("delete") || subcmd.equals("remove") || subcmd.equals("redefine") ||
                     subcmd.equals("setparent") || subcmd.equals("setpriority") || subcmd.equals("teleport") ||
                     subcmd.equals("select")) {
-                    
+
                     if (mcPlayer != null) {
                         com.sk89q.worldedit.world.World world = WorldGuardModCommon.getAdapter().adaptWorld(mcPlayer.level());
-                        com.sk89q.worldguard.protection.managers.RegionManager manager = 
+                        com.sk89q.worldguard.protection.managers.RegionManager manager =
                             WorldGuard.getInstance().getPlatform().getRegionContainer().get(world);
                         if (manager != null) {
                             for (String regionId : manager.getRegions().keySet()) {
@@ -157,7 +303,7 @@ public class WorldGuardModCommon {
             } else if (wordCount == 3) {
                 String subcmd = words[0].toLowerCase();
                 String regionId = words[1];
-                
+
                 if (subcmd.equals("flag")) {
                     for (com.sk89q.worldguard.protection.flags.Flag<?> flag : WorldGuard.getInstance().getFlagRegistry().getAll()) {
                         String flagName = flag.getName().toLowerCase();
@@ -176,7 +322,7 @@ public class WorldGuardModCommon {
                 } else if (subcmd.equals("setparent")) {
                     if (mcPlayer != null) {
                         com.sk89q.worldedit.world.World world = WorldGuardModCommon.getAdapter().adaptWorld(mcPlayer.level());
-                        com.sk89q.worldguard.protection.managers.RegionManager manager = 
+                        com.sk89q.worldguard.protection.managers.RegionManager manager =
                             WorldGuard.getInstance().getPlatform().getRegionContainer().get(world);
                         if (manager != null) {
                             for (String rId : manager.getRegions().keySet()) {
@@ -190,7 +336,7 @@ public class WorldGuardModCommon {
             } else if (wordCount == 4) {
                 String subcmd = words[0].toLowerCase();
                 String flagName = words[2].toLowerCase();
-                
+
                 if (subcmd.equals("flag")) {
                     com.sk89q.worldguard.protection.flags.Flag<?> flag = WorldGuard.getInstance().getFlagRegistry().get(flagName);
                     if (flag instanceof com.sk89q.worldguard.protection.flags.StateFlag) {
@@ -203,8 +349,39 @@ public class WorldGuardModCommon {
                     }
                 }
             }
+        } else if (isPlayerTargetingCommand(commandName)) {
+            // god / ungod / heal / slay / locate: [player]
+            if (wordCount == 1 && mcPlayer != null && mcPlayer.getServer() != null) {
+                for (String playerName : mcPlayer.getServer().getPlayerNames()) {
+                    if (playerName.toLowerCase().startsWith(lastWord)) {
+                        suggestions.add(playerName);
+                    }
+                }
+            }
+        } else if (commandName.equalsIgnoreCase("stopfire") || commandName.equalsIgnoreCase("allowfire")) {
+            // [world]
+            if (wordCount == 1) {
+                for (com.sk89q.worldedit.world.World world : com.sk89q.worldedit.WorldEdit.getInstance()
+                        .getPlatformManager().queryCapability(com.sk89q.worldedit.extension.platform.Capability.GAME_HOOKS).getWorlds()) {
+                    if (world.getName().toLowerCase().startsWith(lastWord)) {
+                        suggestions.add(world.getName());
+                    }
+                }
+            }
+        } else if (commandName.equalsIgnoreCase("halt-activity")) {
+            if (wordCount == 1 && "confirm".startsWith(lastWord)) {
+                suggestions.add("confirm");
+            }
         }
-        
+
         return suggestions;
+    }
+
+    private static boolean isPlayerTargetingCommand(String commandName) {
+        return commandName.equalsIgnoreCase("god")
+            || commandName.equalsIgnoreCase("ungod")
+            || commandName.equalsIgnoreCase("heal")
+            || commandName.equalsIgnoreCase("slay")
+            || commandName.equalsIgnoreCase("locate");
     }
 }

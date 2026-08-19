@@ -137,7 +137,7 @@ public abstract class ServerPlayerGameModeMixin {
         String itemName = stack.getItem().getClass().getName();
         boolean isVehicleItem = itemName.contains("Minecart") || itemName.contains("Boat");
         if (isVehicleItem) {
-            boolean allowedVehicle = query.testState(wePlaceLoc, localPlayer, Flags.PLACE_VEHICLE);
+            boolean allowedVehicle = query.testState(wePlaceLoc, localPlayer, Flags.BUILD, Flags.PLACE_VEHICLE);
             if (!allowedVehicle) {
                 player.sendSystemMessage(Component.literal("§cNo tienes permiso para colocar vehículos aquí."));
                 cir.setReturnValue(InteractionResult.FAIL);
@@ -145,8 +145,28 @@ public abstract class ServerPlayerGameModeMixin {
             }
         }
 
-        // Chequear place (colocación)
-        if (!stack.isEmpty()) {
+        // Colocación de entidades "colgantes" y otras entidades vía useOn (marcos de ítem,
+        // cuadros, soportes de armadura, cristales de End). Sin este chequeo, destruirlas
+        // exigía permiso (ver canDamage) pero colocarlas no exigía ninguno.
+        boolean isEntityPlacementItem = stack.getItem() instanceof net.minecraft.world.item.HangingEntityItem
+            || stack.getItem() instanceof net.minecraft.world.item.ArmorStandItem
+            || stack.getItem() instanceof net.minecraft.world.item.EndCrystalItem;
+        if (isEntityPlacementItem) {
+            boolean canPlaceEntity = query.testState(wePlaceLoc, localPlayer, Flags.BUILD);
+            if (!canPlaceEntity) {
+                player.sendSystemMessage(Component.literal("§cNo tienes permiso para colocar eso aquí."));
+                cir.setReturnValue(InteractionResult.FAIL);
+                return;
+            }
+        }
+
+        // Chequear place (colocación): limitado a ítems que realmente colocan un bloque
+        // (BlockItem) o un fluido (BucketItem, p.ej. agua/lava). Antes se exigía BUILD para
+        // CUALQUIER ítem no vacío usado sobre un bloque (comer, beber pociones, abonar, etc.),
+        // lo que bloqueaba de más interacciones legítimas que no colocan nada.
+        boolean isPlacingItem = stack.getItem() instanceof net.minecraft.world.item.BlockItem
+            || stack.getItem() instanceof net.minecraft.world.item.BucketItem;
+        if (isPlacingItem) {
             boolean canPlace = query.testState(wePlaceLoc, localPlayer, Flags.BUILD, Flags.BLOCK_PLACE);
             if (!canPlace) {
                 player.sendSystemMessage(Component.literal("§cNo tienes permiso para construir aquí."));

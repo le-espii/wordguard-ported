@@ -40,7 +40,7 @@ public class ModWorldGuardPlatform implements WorldGuardPlatform {
 
     @Override
     public String getPlatformVersion() {
-        return "1.21.1-1.0.5-Espii";
+        return "1.21.1-1.5.0";
     }
 
     @Override

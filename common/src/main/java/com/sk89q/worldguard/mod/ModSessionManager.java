@@ -1,12 +1,10 @@
 package com.sk89q.worldguard.mod;
 
-import com.sk89q.worldedit.world.World;
-import com.sk89q.worldguard.LocalPlayer;
 import com.sk89q.worldguard.internal.platform.WorldGuardPlatform;
 import com.sk89q.worldguard.session.AbstractSessionManager;
 
 public class ModSessionManager extends AbstractSessionManager implements Runnable {
-    
+
     public ModSessionManager(WorldGuardPlatform platform) {
         super();
     }
@@ -18,11 +16,13 @@ public class ModSessionManager extends AbstractSessionManager implements Runnabl
 
     @Override
     public void run() {
-        // Ticks de las sesiones
+        // Las sesiones se tickean por jugador en ServerPlayerMixin#onTick,
+        // no aquí; este Runnable no está programado en ningún scheduler.
     }
 
-    @Override
-    public boolean hasBypass(LocalPlayer player, World world) {
-        return player.hasPermission("worldguard.bypass");
-    }
+    // hasBypass() no se sobreescribe: AbstractSessionManager.hasBypass() ya
+    // implementa la semántica correcta de WorldGuard (permiso por mundo
+    // "worldguard.region.bypass.<mundo>" + respeto del toggle de sesión
+    // "hasBypassDisabled"). Sobreescribirlo con un permiso plano rompía
+    // el bypass por mundo y el toggle de sesión (ver auditoría, hallazgo C1).
 }
