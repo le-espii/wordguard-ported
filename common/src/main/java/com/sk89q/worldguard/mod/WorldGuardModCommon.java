@@ -339,14 +339,7 @@ public class WorldGuardModCommon {
 
                 if (subcmd.equals("flag")) {
                     com.sk89q.worldguard.protection.flags.Flag<?> flag = WorldGuard.getInstance().getFlagRegistry().get(flagName);
-                    if (flag instanceof com.sk89q.worldguard.protection.flags.StateFlag) {
-                        String[] states = {"allow", "deny", "none"};
-                        for (String st : states) {
-                            if (st.startsWith(lastWord)) {
-                                suggestions.add(st);
-                            }
-                        }
-                    }
+                    addFlagValueSuggestions(suggestions, flag, lastWord);
                 }
             }
         } else if (isPlayerTargetingCommand(commandName)) {
@@ -375,6 +368,51 @@ public class WorldGuardModCommon {
         }
 
         return suggestions;
+    }
+
+    /**
+     * Sugerencias del valor de "/region flag <region> <flag> <TAB>" según el tipo concreto
+     * del flag. StateFlag es, con diferencia, el tipo más común (allow/deny/none), pero
+     * worldguard-core también define flags con un conjunto de valores igual de discreto y
+     * descubrible (booleanos, modo de juego, clima, "#here" para ubicaciones) que deben
+     * autocompletarse igual — no solo los StateFlag.
+     */
+    private static void addFlagValueSuggestions(List<String> suggestions, com.sk89q.worldguard.protection.flags.Flag<?> flag, String lastWord) {
+        if (flag == null) return;
+
+        if (flag instanceof com.sk89q.worldguard.protection.flags.StateFlag) {
+            addIfStartsWith(suggestions, lastWord, "allow", "deny", "none");
+        } else if (flag instanceof com.sk89q.worldguard.protection.flags.BooleanFlag) {
+            addIfStartsWith(suggestions, lastWord, "true", "false");
+        } else if (flag == com.sk89q.worldguard.protection.flags.Flags.GAME_MODE) {
+            addIfStartsWith(suggestions, lastWord, "survival", "creative", "adventure", "spectator");
+        } else if (flag == com.sk89q.worldguard.protection.flags.Flags.WEATHER_LOCK) {
+            addIfStartsWith(suggestions, lastWord, "clear", "rain", "thunder");
+        } else if (flag == com.sk89q.worldguard.protection.flags.Flags.TELE_LOC
+                || flag == com.sk89q.worldguard.protection.flags.Flags.SPAWN_LOC) {
+            addIfStartsWith(suggestions, lastWord, "#here");
+        } else if (flag == com.sk89q.worldguard.protection.flags.Flags.TIME_LOCK) {
+            addIfStartsWith(suggestions, lastWord, "day", "night", "noon", "midnight");
+        } else if (flag == com.sk89q.worldguard.protection.flags.Flags.DENY_SPAWN) {
+            for (net.minecraft.resources.ResourceLocation key : net.minecraft.core.registries.BuiltInRegistries.ENTITY_TYPE.keySet()) {
+                String id = key.toString();
+                if (id.startsWith(lastWord)) {
+                    suggestions.add(id);
+                }
+            }
+        }
+        // Flags de texto libre (mensajes, TIME_LOCK con ticks numéricos, comandos permitidos/
+        // bloqueados, IntegerFlag/DoubleFlag numéricos) no tienen un conjunto de valores fijo
+        // que sugerir; forzar una sugerencia ahí sería inventar un valor, así que se dejan sin
+        // completar a propósito.
+    }
+
+    private static void addIfStartsWith(List<String> suggestions, String lastWord, String... options) {
+        for (String option : options) {
+            if (option.startsWith(lastWord)) {
+                suggestions.add(option);
+            }
+        }
     }
 
     private static boolean isPlayerTargetingCommand(String commandName) {

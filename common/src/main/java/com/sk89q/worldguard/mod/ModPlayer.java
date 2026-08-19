@@ -27,6 +27,15 @@ public class ModPlayer implements LocalPlayer {
     private final ServerPlayer mcPlayer;
     private final com.sk89q.worldedit.entity.Player wePlayer;
 
+    // Estado del override de clima/hora "solo para este cliente" que usan los session
+    // handlers WeatherLockFlag/TimeLockFlag de worldguard-core (antes eran no-ops, ver
+    // auditoría, hallazgo M4). Minecraft vanilla no tiene un concepto de clima/hora por
+    // jugador: se simula enviando los paquetes de clima/hora solo a la conexión de este
+    // jugador, sin tocar el estado real del ServerLevel (el mismo truco que usa Bukkit).
+    private WeatherType worldguard$weatherOverride;
+    private boolean worldguard$timeRelative = true;
+    private long worldguard$timeOffset = 0;
+
     public ModPlayer(ServerPlayer mcPlayer, com.sk89q.worldedit.entity.Player wePlayer) {
         this.mcPlayer = mcPlayer;
         this.wePlayer = wePlayer;
@@ -40,10 +49,20 @@ public class ModPlayer implements LocalPlayer {
 
     @Override
     public boolean hasGroup(String group) {
-        // En un mod común, chequeamos si es OP. Si hay LuckPerms u otro proveedor de permisos,
-        // se puede integrar a través de la API del proveedor de permisos si estuviera en el classpath,
-        // pero por defecto chequeamos el nivel de permiso de OP.
-        return mcPlayer.hasPermissions(2);
+        // Vanilla no tiene un proveedor de "grupos de permisos" (LuckPerms, etc.) integrado
+        // en el classpath del mod, así que se usan los Equipos de scoreboard (vanilla, sin
+        // dependencias extra) como sustituto: pertenecer al grupo "<nombre>" de WorldGuard
+        // equivale a estar en el equipo "<nombre>" (server owners lo configuran con
+        // /team add <nombre> y /team join <nombre> <jugador>). Antes este método ignoraba
+        // el parámetro "group" por completo y devolvía "es OP" para CUALQUIER grupo
+        // solicitado, rompiendo -grupo en /rg addmember, PlayerModesListener (wg-invincible/
+        // wg-amphibious), etc. (auditoría, hallazgo C3). A propósito ya NO hay un fallback a
+        // "es OP": eso es exactamente lo que hacía que todo grupo diera igual.
+        if (group == null || group.isEmpty()) {
+            return false;
+        }
+        net.minecraft.world.scores.PlayerTeam team = mcPlayer.getTeam();
+        return team != null && team.getName().equalsIgnoreCase(group);
     }
 
     @Override
@@ -117,37 +136,60 @@ public class ModPlayer implements LocalPlayer {
 
     @Override
     public WeatherType getPlayerWeather() {
-        return com.sk89q.worldedit.world.weather.WeatherTypes.CLEAR;
+        if (worldguard$weatherOverride != null) {
+            return worldguard$weatherOverride;
+        }
+        return mcPlayer.level().isRaining()
+            ? com.sk89q.worldedit.world.weather.WeatherTypes.RAIN
+            : com.sk89q.worldedit.world.weather.WeatherTypes.CLEAR;
     }
 
     @Override
     public void setPlayerWeather(WeatherType weatherType) {
-        // No-op
+        this.worldguard$weatherOverride = weatherType;
+        boolean rain = weatherType == com.sk89q.worldedit.world.weather.WeatherTypes.RAIN
+            || weatherType == com.sk89q.worldedit.world.weather.WeatherTypes.THUNDER_STORM;
+        net.minecraft.network.protocol.game.ClientboundGameEventPacket.Type type = rain
+            ? net.minecraft.network.protocol.game.ClientboundGameEventPacket.START_RAINING
+            : net.minecraft.network.protocol.game.ClientboundGameEventPacket.STOP_RAINING;
+        mcPlayer.connection.send(new net.minecraft.network.protocol.game.ClientboundGameEventPacket(type, 0.0f));
     }
 
     @Override
     public void resetPlayerWeather() {
-        // No-op
+        this.worldguard$weatherOverride = null;
+        boolean actuallyRaining = mcPlayer.level().isRaining();
+        net.minecraft.network.protocol.game.ClientboundGameEventPacket.Type type = actuallyRaining
+            ? net.minecraft.network.protocol.game.ClientboundGameEventPacket.START_RAINING
+            : net.minecraft.network.protocol.game.ClientboundGameEventPacket.STOP_RAINING;
+        mcPlayer.connection.send(new net.minecraft.network.protocol.game.ClientboundGameEventPacket(type, 0.0f));
     }
 
     @Override
     public boolean isPlayerTimeRelative() {
-        return true;
+        return worldguard$timeRelative;
     }
 
     @Override
     public long getPlayerTimeOffset() {
-        return 0;
+        return worldguard$timeOffset;
     }
 
     @Override
     public void setPlayerTime(long time, boolean relative) {
-        // No-op
+        this.worldguard$timeRelative = relative;
+        this.worldguard$timeOffset = time;
+        long dayTime = relative ? (mcPlayer.level().getDayTime() + time) : time;
+        mcPlayer.connection.send(new net.minecraft.network.protocol.game.ClientboundSetTimePacket(
+            mcPlayer.level().getGameTime(), dayTime, false));
     }
 
     @Override
     public void resetPlayerTime() {
-        // No-op
+        this.worldguard$timeRelative = true;
+        this.worldguard$timeOffset = 0;
+        mcPlayer.connection.send(new net.minecraft.network.protocol.game.ClientboundSetTimePacket(
+            mcPlayer.level().getGameTime(), mcPlayer.level().getDayTime(), true));
     }
 
     @Override

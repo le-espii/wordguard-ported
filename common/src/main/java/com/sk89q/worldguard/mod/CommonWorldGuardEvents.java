@@ -190,6 +190,14 @@ public class CommonWorldGuardEvents {
                 serverPlayer.sendSystemMessage(Component.literal("§cNo tienes permiso para montar vehículos/entidades aquí."));
                 return InteractionResult.FAIL;
             }
+        } else if (target instanceof net.minecraft.world.entity.decoration.ItemFrame frame && !frame.getItem().isEmpty()) {
+            // Rotar el ítem que ya contiene un marco de ítem usa un flag específico
+            // (Flags.ITEM_FRAME_ROTATE), no solo INTERACT genérico (hallazgo M3).
+            boolean canRotate = query.queryState(targetLoc, localPlayer, Flags.INTERACT) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY
+                    && query.queryState(targetLoc, localPlayer, Flags.ITEM_FRAME_ROTATE) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+            if (!canRotate) {
+                return InteractionResult.FAIL;
+            }
         } else {
             boolean canInteract = query.queryState(targetLoc, localPlayer, Flags.INTERACT) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
             if (!canInteract) {

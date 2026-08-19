@@ -5,6 +5,8 @@ import com.sk89q.worldguard.WorldGuard;
 import com.sk89q.worldguard.mod.WorldGuardModCommon;
 import com.sk89q.worldguard.session.MoveType;
 import com.sk89q.worldguard.session.Session;
+import com.sk89q.worldguard.session.handler.GodMode;
+import com.sk89q.worldguard.session.handler.WaterBreathing;
 import net.minecraft.server.level.ServerPlayer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
@@ -18,6 +20,7 @@ public abstract class ServerPlayerMixin {
     @Unique private double worldguard$lastX = Double.NaN;
     @Unique private double worldguard$lastY = Double.NaN;
     @Unique private double worldguard$lastZ = Double.NaN;
+    @Unique private boolean worldguard$autoModesApplied = false;
 
     @Inject(method = "tick", at = @At("HEAD"))
     private void onTick(CallbackInfo ci) {
@@ -30,6 +33,23 @@ public abstract class ServerPlayerMixin {
         LocalPlayer localPlayer = WorldGuardModCommon.getAdapter().adaptPlayer(player);
         Session session = WorldGuard.getInstance().getPlatform().getSessionManager().get(localPlayer);
         if (session == null) return;
+
+        // Activa modo dios / respiración acuática automáticamente para jugadores del grupo
+        // "wg-invincible"/"wg-amphibious" (equipo de scoreboard, ver ModPlayer#hasGroup) o
+        // con los permisos worldguard.auto-invincible/worldguard.auto-amphibious, igual que
+        // PlayerModesListener#onProcessPlayer en el original. Antes no existía ningún
+        // equivalente al join (auditoría, hallazgo M6). Solo se aplica una vez por conexión;
+        // set(...) ya es idempotente (no reactiva algo que el jugador desactivó a mano
+        // después), así que hacerlo cada tick sería redundante e innecesariamente costoso.
+        if (!worldguard$autoModesApplied) {
+            worldguard$autoModesApplied = true;
+            if (localPlayer.hasGroup("wg-invincible") || localPlayer.hasPermission("worldguard.auto-invincible")) {
+                GodMode.set(localPlayer, session, true);
+            }
+            if (localPlayer.hasGroup("wg-amphibious") || localPlayer.hasPermission("worldguard.auto-amphibious")) {
+                WaterBreathing.set(localPlayer, session, true);
+            }
+        }
 
         // Tick session
         session.tick(localPlayer);

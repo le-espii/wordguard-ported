@@ -81,12 +81,15 @@ public abstract class ServerPlayerGameModeMixin {
         RegionContainer container = WorldGuard.getInstance().getPlatform().getRegionContainer();
         RegionQuery query = container.createQuery();
 
-        // 1. Determinar el flag de interacción adecuado según el tipo de bloque
+        // 1. Determinar el/los flag(s) de interacción adecuados según el tipo de bloque.
+        // El original combina INTERACT con un flag específico para camas, anclas de respawn,
+        // TNT y bloques de tipo "USE" (auditoría, hallazgo M3) — no basta con el flag
+        // específico solo.
         net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
         net.minecraft.world.level.block.Block block = state.getBlock();
-        com.sk89q.worldguard.protection.flags.StateFlag interactFlag = Flags.INTERACT;
+        com.sk89q.worldguard.protection.flags.StateFlag[] interactFlags = {Flags.INTERACT};
         String className = block.getClass().getName();
-        if (block instanceof net.minecraft.world.level.block.ChestBlock 
+        if (block instanceof net.minecraft.world.level.block.ChestBlock
             || block instanceof net.minecraft.world.level.block.EnderChestBlock
             || className.contains("Chest")
             || className.contains("Furnace")
@@ -97,24 +100,28 @@ public abstract class ServerPlayerGameModeMixin {
             || className.contains("ShulkerBox")
             || className.contains("BrewingStand")
             || className.contains("Crafter")) {
-            interactFlag = Flags.CHEST_ACCESS;
+            interactFlags = new com.sk89q.worldguard.protection.flags.StateFlag[]{Flags.CHEST_ACCESS};
         } else if (block instanceof net.minecraft.world.level.block.AnvilBlock) {
-            interactFlag = Flags.USE_ANVIL;
+            interactFlags = new com.sk89q.worldguard.protection.flags.StateFlag[]{Flags.USE_ANVIL};
         } else if (block instanceof net.minecraft.world.level.block.BedBlock) {
-            interactFlag = Flags.SLEEP;
-        } else if (block instanceof net.minecraft.world.level.block.DoorBlock 
-            || block instanceof net.minecraft.world.level.block.TrapDoorBlock 
-            || block instanceof net.minecraft.world.level.block.FenceGateBlock 
+            interactFlags = new com.sk89q.worldguard.protection.flags.StateFlag[]{Flags.INTERACT, Flags.SLEEP};
+        } else if (block instanceof net.minecraft.world.level.block.RespawnAnchorBlock) {
+            interactFlags = new com.sk89q.worldguard.protection.flags.StateFlag[]{Flags.INTERACT, Flags.RESPAWN_ANCHORS};
+        } else if (block instanceof net.minecraft.world.level.block.TntBlock) {
+            interactFlags = new com.sk89q.worldguard.protection.flags.StateFlag[]{Flags.INTERACT, Flags.TNT};
+        } else if (block instanceof net.minecraft.world.level.block.DoorBlock
+            || block instanceof net.minecraft.world.level.block.TrapDoorBlock
+            || block instanceof net.minecraft.world.level.block.FenceGateBlock
             || className.contains("Lever")
             || className.contains("Button")
             || className.contains("Repeater")
             || className.contains("Comparator")
             || className.contains("Lectern")) {
-            interactFlag = Flags.USE;
+            interactFlags = new com.sk89q.worldguard.protection.flags.StateFlag[]{Flags.INTERACT, Flags.USE};
         }
 
         // Chequear interact (click derecho al bloque)
-        boolean canInteract = query.testState(weLoc, localPlayer, interactFlag);
+        boolean canInteract = query.testState(weLoc, localPlayer, interactFlags);
         if (!canInteract) {
             player.sendSystemMessage(Component.literal("§cNo tienes permiso para interactuar aquí."));
             cir.setReturnValue(InteractionResult.FAIL);
