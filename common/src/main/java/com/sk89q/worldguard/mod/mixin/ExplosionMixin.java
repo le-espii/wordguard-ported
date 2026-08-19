@@ -18,7 +18,6 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import javax.annotation.Nullable;
-import java.util.List;
 
 @Mixin(Explosion.class)
 public abstract class ExplosionMixin {
@@ -44,6 +43,15 @@ public abstract class ExplosionMixin {
             final com.sk89q.worldguard.LocalPlayer finalPlayer = localPlayer;
             StateFlag explosionFlag = worldguard$getExplosionFlag(indirectSource);
 
+            // Interruptores duros de config.yml para el daño a bloques por tipo de explosión
+            // (independientes de las regiones): antes de C2 no tenían ningún efecto.
+            com.sk89q.worldguard.config.WorldConfiguration wcfg = WorldGuard.getInstance().getPlatform()
+                .getGlobalStateManager().get(world);
+            if (worldguard$isBlockDamageToggledOff(wcfg, indirectSource)) {
+                this.toBlow.clear();
+                return;
+            }
+
             // Filtrar toBlow para remover los bloques protegidos por WorldGuard
             this.toBlow.removeIf(pos -> {
                 com.sk89q.worldedit.util.Location weLoc = new com.sk89q.worldedit.util.Location(
@@ -68,6 +76,27 @@ public abstract class ExplosionMixin {
         } catch (Throwable t) {
             t.printStackTrace();
         }
+    }
+
+    @Unique
+    private boolean worldguard$isBlockDamageToggledOff(com.sk89q.worldguard.config.WorldConfiguration wcfg, net.minecraft.world.entity.Entity exploder) {
+        if (wcfg.blockOtherExplosions) {
+            return true;
+        }
+        if (exploder == null) {
+            return false;
+        }
+        String className = exploder.getClass().getName();
+        if (className.contains("Creeper")) {
+            return wcfg.blockCreeperBlockDamage;
+        } else if (className.contains("Wither")) {
+            return wcfg.blockWitherBlockDamage;
+        } else if (className.contains("Fireball")) {
+            return wcfg.blockFireballBlockDamage;
+        } else if (className.contains("Tnt") || className.contains("TNT")) {
+            return wcfg.blockTNTBlockDamage;
+        }
+        return false;
     }
 
     @Unique

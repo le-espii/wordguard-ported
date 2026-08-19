@@ -30,6 +30,16 @@ public abstract class FireBlockMixin {
         if (WorldGuardModCommon.getAdapter() == null) return;
         if (level.isClientSide()) return;
 
+        // Interruptor duro de config.yml (fire.disable-all-fire-spread), independiente del
+        // flag de región: antes de C2, config.yml no tenía ningún efecto.
+        com.sk89q.worldguard.config.WorldConfiguration wcfg =
+            WorldGuard.getInstance().getPlatform().getGlobalStateManager().get(
+                WorldGuardModCommon.getAdapter().adaptWorld(level));
+        if (wcfg.disableFireSpread) {
+            ci.cancel();
+            return;
+        }
+
         com.sk89q.worldedit.world.World world = WorldGuardModCommon.getAdapter().adaptWorld(level);
         com.sk89q.worldedit.util.Location weLoc = new com.sk89q.worldedit.util.Location(
             world,

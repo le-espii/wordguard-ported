@@ -34,13 +34,20 @@ public abstract class ServerPlayerGameModeMixin {
         com.sk89q.worldedit.world.World world = WorldGuardModCommon.getAdapter().adaptWorld(this.level);
         com.sk89q.worldguard.LocalPlayer localPlayer = WorldGuardModCommon.getAdapter().adaptPlayer(this.player);
 
-        // Chequear bypass primero (ej. si es OP o tiene bypass de región)
+        // La blacklist es independiente de las regiones (el original no la exime con el
+        // bypass de región), así que se comprueba antes de mirar el bypass.
+        if (!CommonWorldGuardEvents.checkBreakBlacklist(this.player, this.level, pos)) {
+            cir.setReturnValue(false);
+            return;
+        }
+
+        // Chequear bypass (ej. si es OP o tiene bypass de región)
         boolean hasBypass = WorldGuard.getInstance().getPlatform().getSessionManager().hasBypass(localPlayer, world);
         if (hasBypass) return;
 
         // Comprobar la protección de la región en la posición del bloque
         com.sk89q.worldedit.util.Location weLoc = new com.sk89q.worldedit.util.Location(
-            world, 
+            world,
             com.sk89q.worldedit.math.BlockVector3.at(pos.getX(), pos.getY(), pos.getZ()).toVector3()
         );
 
@@ -53,6 +60,21 @@ public abstract class ServerPlayerGameModeMixin {
         }
     }
 
+    // protection.item-durability (config.yml, C2): si está en false ("durabilidad infinita"),
+    // repone el daño de la herramienta a 0 en cada bloque roto exitosamente, igual que
+    // WorldGuardBlockListener#onBlockBreak en el original.
+    @Inject(method = "destroyBlock", at = @At("RETURN"))
+    private void worldguard$onDestroyBlockReturn(BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
+        if (WorldGuardModCommon.getAdapter() == null) return;
+        if (!Boolean.TRUE.equals(cir.getReturnValue())) return;
+
+        com.sk89q.worldguard.config.WorldConfiguration wcfg = WorldGuard.getInstance().getPlatform()
+            .getGlobalStateManager().get(WorldGuardModCommon.getAdapter().adaptWorld(this.level));
+        if (!wcfg.itemDurability) {
+            this.player.getMainHandItem().setDamageValue(0);
+        }
+    }
+
     @Inject(method = "useItemOn", at = @At("HEAD"), cancellable = true)
     private void onUseItemOn(ServerPlayer player, Level level, ItemStack stack, InteractionHand hand, BlockHitResult hitResult, CallbackInfoReturnable<InteractionResult> cir) {
         if (WorldGuardModCommon.getAdapter() == null) return;
@@ -60,14 +82,26 @@ public abstract class ServerPlayerGameModeMixin {
         com.sk89q.worldedit.world.World world = WorldGuardModCommon.getAdapter().adaptWorld(level);
         com.sk89q.worldguard.LocalPlayer localPlayer = WorldGuardModCommon.getAdapter().adaptPlayer(player);
 
-        // Chequear bypass primero
-        boolean hasBypass = WorldGuard.getInstance().getPlatform().getSessionManager().hasBypass(localPlayer, world);
-        if (hasBypass) return;
-
         BlockPos pos = hitResult.getBlockPos();
-        
+
         // También podemos necesitar chequear la posición adyacente (donde se coloca el bloque)
         BlockPos placePos = pos.relative(hitResult.getDirection());
+
+        // La blacklist es independiente de las regiones (el original no la exime con el
+        // bypass de región), así que se comprueba antes de mirar el bypass.
+        if (!CommonWorldGuardEvents.checkInteractBlacklist(player, level, pos)) {
+            cir.setReturnValue(InteractionResult.FAIL);
+            return;
+        }
+        if (stack.getItem() instanceof net.minecraft.world.item.BlockItem earlyBlockItem
+            && !CommonWorldGuardEvents.checkPlaceBlacklist(player, level, placePos, earlyBlockItem.getBlock())) {
+            cir.setReturnValue(InteractionResult.FAIL);
+            return;
+        }
+
+        // Chequear bypass
+        boolean hasBypass = WorldGuard.getInstance().getPlatform().getSessionManager().hasBypass(localPlayer, world);
+        if (hasBypass) return;
 
         com.sk89q.worldedit.util.Location weLoc = new com.sk89q.worldedit.util.Location(
             world, 
@@ -128,11 +162,15 @@ public abstract class ServerPlayerGameModeMixin {
             return;
         }
 
-        // Lighter check
-        boolean isLighter = stack.getItem() == net.minecraft.world.item.Items.FLINT_AND_STEEL 
+        // Lighter check: combina el interruptor duro ignition.block-lighter (con permiso de
+        // override, igual que WorldGuardBlockListener#onBlockIgnite) con el flag de región.
+        boolean isLighter = stack.getItem() == net.minecraft.world.item.Items.FLINT_AND_STEEL
             || stack.getItem() == net.minecraft.world.item.Items.FIRE_CHARGE;
         if (isLighter) {
-            boolean allowedLighter = query.testState(wePlaceLoc, localPlayer, Flags.LIGHTER);
+            com.sk89q.worldguard.config.WorldConfiguration wcfg =
+                WorldGuard.getInstance().getPlatform().getGlobalStateManager().get(world);
+            boolean blockedByToggle = wcfg.blockLighter && !localPlayer.hasPermission("worldguard.override.lighter");
+            boolean allowedLighter = !blockedByToggle && query.testState(wePlaceLoc, localPlayer, Flags.LIGHTER);
             if (!allowedLighter) {
                 CommonWorldGuardEvents.tellDenyMessage(player, wePlaceLoc, localPlayer, "lighter");
                 cir.setReturnValue(InteractionResult.FAIL);

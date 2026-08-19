@@ -51,6 +51,17 @@ public class CommonWorldGuardEvents {
     }
 
     /**
+     * Interruptores "duros" de config.yml (independientes de las regiones): con C2 arreglado,
+     * ya se cargan de verdad, pero antes de estos usos nadie los consultaba. Se aplican con
+     * lógica OR frente al flag de región correspondiente (si cualquiera de los dos bloquea,
+     * se bloquea), igual que WorldGuardBlockListener/WorldGuardEntityListener en el original.
+     */
+    private static com.sk89q.worldguard.config.WorldConfiguration getWorldConfig(Level level) {
+        com.sk89q.worldedit.world.World world = WorldGuardModCommon.getAdapter().adaptWorld(level);
+        return WorldGuard.getInstance().getPlatform().getGlobalStateManager().get(world);
+    }
+
+    /**
      * Envía un mensaje de denegación al jugador, respetando el flag de región
      * Flags.DENY_MESSAGE (mensaje personalizable con el macro %what%) y el límite de
      * frecuencia de 500ms, igual que RegionProtectionListener#tellErrorMessage en el
@@ -119,6 +130,34 @@ public class CommonWorldGuardEvents {
                 return false;
             }
 
+            // Interruptores duros de config.yml para tipos de daño concretos (independientes
+            // de las regiones, ver getWorldConfig): antes de cablear esto, config.yml no
+            // tenía ningún efecto sobre disable-fall-damage/lava-damage/fire-damage/
+            // lightning-damage/void-damage aunque ya se cargaban desde el archivo.
+            com.sk89q.worldguard.config.WorldConfiguration wcfg = getWorldConfig(level);
+            if (source.is(net.minecraft.world.damagesource.DamageTypes.FALL) && wcfg.disableFallDamage) {
+                return false;
+            }
+            if (source.is(net.minecraft.world.damagesource.DamageTypes.LAVA) && wcfg.disableLavaDamage) {
+                return false;
+            }
+            if ((source.is(net.minecraft.world.damagesource.DamageTypes.IN_FIRE) || source.is(net.minecraft.world.damagesource.DamageTypes.ON_FIRE))
+                    && wcfg.disableFireDamage) {
+                return false;
+            }
+            if (source.is(net.minecraft.world.damagesource.DamageTypes.LIGHTNING_BOLT) && wcfg.disableLightningDamage) {
+                return false;
+            }
+            if (source.is(net.minecraft.world.damagesource.DamageTypes.DROWN) && wcfg.disableDrowningDamage) {
+                return false;
+            }
+            if (source.is(net.minecraft.world.damagesource.DamageTypes.IN_WALL) && wcfg.disableSuffocationDamage) {
+                return false;
+            }
+            if (source.is(net.minecraft.world.damagesource.DamageTypes.FELL_OUT_OF_WORLD) && wcfg.disableVoidDamage) {
+                return false;
+            }
+
             // Daño de caída
             if (source.is(net.minecraft.world.damagesource.DamageTypes.FALL)) {
                 if (query.queryState(targetLoc, localDefender, Flags.FALL_DAMAGE) == com.sk89q.worldguard.protection.flags.StateFlag.State.DENY) {
@@ -146,7 +185,8 @@ public class CommonWorldGuardEvents {
                     isTamed = ((OwnableEntity) attacker).getOwnerUUID() != null;
                 }
                 if (!isTamed) {
-                    if (query.queryState(targetLoc, localDefender, Flags.MOB_DAMAGE) == com.sk89q.worldguard.protection.flags.StateFlag.State.DENY) {
+                    if (wcfg.disableMobDamage
+                        || query.queryState(targetLoc, localDefender, Flags.MOB_DAMAGE) == com.sk89q.worldguard.protection.flags.StateFlag.State.DENY) {
                         return false;
                     }
                 }
@@ -248,20 +288,28 @@ public class CommonWorldGuardEvents {
     }
 
     // --- RECOGIDA Y LANZAMIENTO DE ÍTEMS ---
-    public static boolean canDropItem(Player player) {
+    public static boolean canDropItem(Player player, net.minecraft.world.item.Item item) {
         if (WorldGuardModCommon.getAdapter() == null) return true;
         Level level = player.level();
         if (level.isClientSide()) return true;
 
         ServerPlayer serverPlayer = (ServerPlayer) player;
         LocalPlayer localPlayer = WorldGuardModCommon.getAdapter().adaptPlayer(serverPlayer);
+        BlockPos pos = player.blockPosition();
+
+        // La blacklist es un sistema independiente de las regiones (igual que en el
+        // original, BlacklistListener no consulta el bypass de región), así que se chequea
+        // sin importar si el jugador tiene bypass (hallazgo H3).
+        if (!checkDropBlacklist(serverPlayer, level, pos, item)) {
+            return false;
+        }
 
         if (WorldGuard.getInstance().getPlatform().getSessionManager().hasBypass(localPlayer, localPlayer.getWorld())) {
             return true;
         }
 
         RegionQuery query = getQuery();
-        com.sk89q.worldedit.util.Location loc = weLoc(level, player.blockPosition());
+        com.sk89q.worldedit.util.Location loc = weLoc(level, pos);
 
         boolean canDrop = query.queryState(loc, localPlayer, Flags.ITEM_DROP) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         if (!canDrop) {
@@ -278,13 +326,18 @@ public class CommonWorldGuardEvents {
 
         ServerPlayer serverPlayer = (ServerPlayer) player;
         LocalPlayer localPlayer = WorldGuardModCommon.getAdapter().adaptPlayer(serverPlayer);
+        BlockPos pos = itemEntity.blockPosition();
+
+        if (!checkAcquireBlacklist(serverPlayer, level, pos, itemEntity.getItem().getItem())) {
+            return false;
+        }
 
         if (WorldGuard.getInstance().getPlatform().getSessionManager().hasBypass(localPlayer, localPlayer.getWorld())) {
             return true;
         }
 
         RegionQuery query = getQuery();
-        com.sk89q.worldedit.util.Location loc = weLoc(level, itemEntity.blockPosition());
+        com.sk89q.worldedit.util.Location loc = weLoc(level, pos);
 
         return query.queryState(loc, localPlayer, Flags.ITEM_PICKUP) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
     }
@@ -296,12 +349,41 @@ public class CommonWorldGuardEvents {
 
         RegionQuery query = getQuery();
         com.sk89q.worldedit.util.Location loc = weLoc(level, entity.blockPosition());
+        com.sk89q.worldguard.config.WorldConfiguration wcfg = getWorldConfig(level);
+
+        if (entity instanceof net.minecraft.world.entity.ExperienceOrb) {
+            return !wcfg.disableExpDrops;
+        }
 
         if (entity instanceof LightningBolt) {
             return query.queryState(loc, null, Flags.LIGHTNING) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
 
         if (entity instanceof Mob) {
+            boolean isTamed = entity instanceof net.minecraft.world.entity.OwnableEntity ownable && ownable.getOwnerUUID() != null;
+            if (isTamed && wcfg.allowTamedSpawns) {
+                return true;
+            }
+
+            // mobs.block-above-ground-slimes: sin información de "razón de spawn" disponible
+            // en este punto (a diferencia de Bukkit), se aproxima a "cualquier slime que
+            // aparezca sobre Y=60", que es el caso que este interruptor busca evitar.
+            if (wcfg.blockGroundSlimes && entity instanceof net.minecraft.world.entity.monster.Slime
+                    && entity.blockPosition().getY() >= 60) {
+                return false;
+            }
+
+            // mobs.block-creature-spawn: lista de tipos bloqueados sin importar la región.
+            if (!wcfg.blockCreatureSpawn.isEmpty()) {
+                ResourceLocation entityKey = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
+                if (entityKey != null) {
+                    com.sk89q.worldedit.world.entity.EntityType weType = com.sk89q.worldedit.world.entity.EntityTypes.get(entityKey.toString());
+                    if (weType != null && wcfg.blockCreatureSpawn.contains(weType)) {
+                        return false;
+                    }
+                }
+            }
+
             // General mob-spawning check
             boolean canSpawn = query.queryState(loc, null, Flags.MOB_SPAWNING) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
             if (!canSpawn) {
@@ -310,12 +392,12 @@ public class CommonWorldGuardEvents {
 
             // Specific deny-spawn check
             ApplicableRegionSet set = query.getApplicableRegions(loc);
-            Set<com.sk89q.worldedit.world.entity.EntityType> deniedTypes = 
+            Set<com.sk89q.worldedit.world.entity.EntityType> deniedTypes =
                     (Set<com.sk89q.worldedit.world.entity.EntityType>) set.queryValue(null, Flags.DENY_SPAWN);
             if (deniedTypes != null && !deniedTypes.isEmpty()) {
                 ResourceLocation key = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType());
                 if (key != null) {
-                    com.sk89q.worldedit.world.entity.EntityType weEntityType = 
+                    com.sk89q.worldedit.world.entity.EntityType weEntityType =
                             com.sk89q.worldedit.world.entity.EntityTypes.get(key.toString());
                     if (weEntityType != null && deniedTypes.contains(weEntityType)) {
                         return false;
@@ -330,12 +412,14 @@ public class CommonWorldGuardEvents {
     // --- INTERCEPCIÓN DE CLIMA Y FLUIDOS DE BIOMA ---
     public static boolean canFreeze(Level level, BlockPos pos) {
         if (WorldGuardModCommon.getAdapter() == null) return true;
+        if (getWorldConfig(level).disableIceFormation) return false;
         RegionQuery query = getQuery();
         return query.queryState(weLoc(level, pos), null, Flags.ICE_FORM) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
     }
 
     public static boolean canSnow(Level level, BlockPos pos) {
         if (WorldGuardModCommon.getAdapter() == null) return true;
+        if (getWorldConfig(level).disableSnowFormation) return false;
         RegionQuery query = getQuery();
         return query.queryState(weLoc(level, pos), null, Flags.SNOW_FALL) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
     }
@@ -348,24 +432,25 @@ public class CommonWorldGuardEvents {
         RegionQuery query = getQuery();
         com.sk89q.worldedit.util.Location loc = weLoc(level, pos);
         net.minecraft.world.level.block.Block block = state.getBlock();
+        com.sk89q.worldguard.config.WorldConfiguration wcfg = getWorldConfig(level);
 
         if (block instanceof net.minecraft.world.level.block.LeavesBlock) {
-            return query.queryState(loc, null, Flags.LEAF_DECAY) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+            return !wcfg.disableLeafDecay && query.queryState(loc, null, Flags.LEAF_DECAY) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
         if (block instanceof net.minecraft.world.level.block.IceBlock) {
-            return query.queryState(loc, null, Flags.ICE_MELT) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+            return !wcfg.disableIceMelting && query.queryState(loc, null, Flags.ICE_MELT) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
         if (block instanceof net.minecraft.world.level.block.SnowLayerBlock) {
-            return query.queryState(loc, null, Flags.SNOW_MELT) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+            return !wcfg.disableSnowMelting && query.queryState(loc, null, Flags.SNOW_MELT) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
         if (block instanceof net.minecraft.world.level.block.FarmBlock) {
-            return query.queryState(loc, null, Flags.SOIL_DRY) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+            return !wcfg.disableSoilDehydration && query.queryState(loc, null, Flags.SOIL_DRY) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
         if (block instanceof net.minecraft.world.level.block.GrassBlock) {
-            return query.queryState(loc, null, Flags.GRASS_SPREAD) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+            return !wcfg.disableGrassGrowth && query.queryState(loc, null, Flags.GRASS_SPREAD) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
         if (block instanceof net.minecraft.world.level.block.MyceliumBlock) {
-            return query.queryState(loc, null, Flags.MYCELIUM_SPREAD) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+            return !wcfg.disableMyceliumSpread && query.queryState(loc, null, Flags.MYCELIUM_SPREAD) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
 
         // Cultivos, brotes, tallos, cocoa, bayas dulces, flor antorcha, nether wart.
@@ -376,36 +461,39 @@ public class CommonWorldGuardEvents {
                 || block instanceof net.minecraft.world.level.block.SweetBerryBushBlock
                 || block instanceof net.minecraft.world.level.block.CocoaBlock
                 || block instanceof net.minecraft.world.level.block.TorchflowerCropBlock) {
-            return query.queryState(loc, null, Flags.CROP_GROWTH) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+            return !wcfg.disableCropGrowth && query.queryState(loc, null, Flags.CROP_GROWTH) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
 
         // Enredaderas trepando (Flags.VINE_GROWTH) — sin gancho antes de la auditoría (H11).
         if (block instanceof net.minecraft.world.level.block.VineBlock) {
-            return query.queryState(loc, null, Flags.VINE_GROWTH) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+            return !wcfg.disableVineGrowth && query.queryState(loc, null, Flags.VINE_GROWTH) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
 
         // Crecimiento de amatista y goteo de dripstone (Flags.ROCK_GROWTH) — ídem.
         if (block instanceof net.minecraft.world.level.block.BuddingAmethystBlock
                 || block instanceof net.minecraft.world.level.block.PointedDripstoneBlock) {
-            return query.queryState(loc, null, Flags.ROCK_GROWTH) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+            return !wcfg.disableRockGrowth && query.queryState(loc, null, Flags.ROCK_GROWTH) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
 
         // Propagación de hongos pequeños (Flags.MUSHROOMS) — ídem.
         if (block instanceof net.minecraft.world.level.block.MushroomBlock) {
-            return query.queryState(loc, null, Flags.MUSHROOMS) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+            return !wcfg.disableMushroomSpread && query.queryState(loc, null, Flags.MUSHROOMS) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
 
         // Oxidación de cobre sin encerar (Flags.COPPER_FADE) — ídem.
         if (block instanceof net.minecraft.world.level.block.WeatheringCopper) {
-            return query.queryState(loc, null, Flags.COPPER_FADE) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
+            return !wcfg.disableCopperBlockFade && query.queryState(loc, null, Flags.COPPER_FADE) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         }
 
         return true;
     }
 
     // --- PISOTEO DE CULTIVOS ---
-    public static boolean canTrampleCrops(Level level, BlockPos pos) {
+    public static boolean canTrampleCrops(Entity trampler, Level level, BlockPos pos) {
         if (WorldGuardModCommon.getAdapter() == null) return true;
+        com.sk89q.worldguard.config.WorldConfiguration wcfg = getWorldConfig(level);
+        boolean disabledByToggle = trampler instanceof Player ? wcfg.disablePlayerCropTrampling : wcfg.disableCreatureCropTrampling;
+        if (disabledByToggle) return false;
         RegionQuery query = getQuery();
         return query.queryState(weLoc(level, pos), null, Flags.TRAMPLE_BLOCKS) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
     }
@@ -413,6 +501,7 @@ public class CommonWorldGuardEvents {
     // --- ENDERMAN GRIEFING ---
     public static boolean canEndermanGrief(Level level, BlockPos pos) {
         if (WorldGuardModCommon.getAdapter() == null) return true;
+        if (getWorldConfig(level).disableEndermanGriefing) return false;
         RegionQuery query = getQuery();
         return query.queryState(weLoc(level, pos), null, Flags.ENDER_BUILD) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
     }
@@ -420,6 +509,7 @@ public class CommonWorldGuardEvents {
     // --- RASTRO DE NIEVE DE MUÑECO DE NIEVE ---
     public static boolean canSnowmanTrail(Level level, BlockPos pos) {
         if (WorldGuardModCommon.getAdapter() == null) return true;
+        if (getWorldConfig(level).disableSnowmanTrails) return false;
         RegionQuery query = getQuery();
         return query.queryState(weLoc(level, pos), null, Flags.SNOWMAN_TRAILS) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
     }
@@ -455,5 +545,93 @@ public class CommonWorldGuardEvents {
             }
         }
         return true;
+    }
+
+    // --- LISTA NEGRA DE MATERIALES (blacklist.txt) ---
+    // Antes de la auditoría (hallazgo H3), el archivo se leía (ModWorldConfiguration) pero
+    // ningún Mixin llamaba nunca a Blacklist#check(...): la funcionalidad de blacklist.txt
+    // era, en la práctica, inexistente. El propio Blacklist se encarga de los mensajes/logs/
+    // acciones configuradas en cada entrada (Action), así que aquí solo hace falta construir
+    // el evento correcto y respetar su resultado.
+
+    @FunctionalInterface
+    private interface BlacklistEventFactory {
+        com.sk89q.worldguard.blacklist.event.BlacklistEvent create(
+            LocalPlayer player, com.sk89q.worldedit.math.BlockVector3 pos, com.sk89q.worldguard.blacklist.target.Target target);
+    }
+
+    private static com.sk89q.worldguard.blacklist.Blacklist getBlacklist(com.sk89q.worldedit.world.World world) {
+        return WorldGuard.getInstance().getPlatform().getGlobalStateManager().get(world).getBlacklist();
+    }
+
+    private static com.sk89q.worldedit.world.block.BlockType weBlockType(net.minecraft.world.level.block.Block block) {
+        ResourceLocation key = BuiltInRegistries.BLOCK.getKey(block);
+        return key != null ? com.sk89q.worldedit.world.block.BlockTypes.get(key.toString()) : null;
+    }
+
+    private static com.sk89q.worldedit.world.item.ItemType weItemType(net.minecraft.world.item.Item item) {
+        ResourceLocation key = BuiltInRegistries.ITEM.getKey(item);
+        return key != null ? com.sk89q.worldedit.world.item.ItemTypes.get(key.toString()) : null;
+    }
+
+    private static boolean checkBlockBlacklist(ServerPlayer player, Level level, BlockPos pos,
+                                                net.minecraft.world.level.block.Block block, BlacklistEventFactory factory) {
+        if (WorldGuardModCommon.getAdapter() == null) return true;
+        if (level.isClientSide()) return true;
+
+        com.sk89q.worldedit.world.World world = WorldGuardModCommon.getAdapter().adaptWorld(level);
+        com.sk89q.worldguard.blacklist.Blacklist blacklist = getBlacklist(world);
+        if (blacklist == null) return true;
+
+        com.sk89q.worldedit.world.block.BlockType type = weBlockType(block);
+        if (type == null) return true;
+
+        LocalPlayer localPlayer = player != null ? WorldGuardModCommon.getAdapter().adaptPlayer(player) : null;
+        com.sk89q.worldedit.math.BlockVector3 vec = com.sk89q.worldedit.math.BlockVector3.at(pos.getX(), pos.getY(), pos.getZ());
+        com.sk89q.worldguard.blacklist.target.Target target = new com.sk89q.worldguard.blacklist.target.BlockTarget(type);
+        return blacklist.check(factory.create(localPlayer, vec, target), false, false);
+    }
+
+    private static boolean checkItemBlacklist(ServerPlayer player, Level level, BlockPos pos,
+                                               net.minecraft.world.item.Item item, BlacklistEventFactory factory) {
+        if (WorldGuardModCommon.getAdapter() == null) return true;
+        if (level.isClientSide()) return true;
+
+        com.sk89q.worldedit.world.World world = WorldGuardModCommon.getAdapter().adaptWorld(level);
+        com.sk89q.worldguard.blacklist.Blacklist blacklist = getBlacklist(world);
+        if (blacklist == null) return true;
+
+        com.sk89q.worldedit.world.item.ItemType type = weItemType(item);
+        if (type == null) return true;
+
+        LocalPlayer localPlayer = player != null ? WorldGuardModCommon.getAdapter().adaptPlayer(player) : null;
+        com.sk89q.worldedit.math.BlockVector3 vec = com.sk89q.worldedit.math.BlockVector3.at(pos.getX(), pos.getY(), pos.getZ());
+        com.sk89q.worldguard.blacklist.target.Target target = new com.sk89q.worldguard.blacklist.target.ItemTarget(type);
+        return blacklist.check(factory.create(localPlayer, vec, target), false, false);
+    }
+
+    public static boolean checkBreakBlacklist(ServerPlayer player, Level level, BlockPos pos) {
+        return checkBlockBlacklist(player, level, pos, level.getBlockState(pos).getBlock(),
+            com.sk89q.worldguard.blacklist.event.BlockBreakBlacklistEvent::new);
+    }
+
+    public static boolean checkPlaceBlacklist(ServerPlayer player, Level level, BlockPos pos, net.minecraft.world.level.block.Block block) {
+        return checkBlockBlacklist(player, level, pos, block,
+            com.sk89q.worldguard.blacklist.event.BlockPlaceBlacklistEvent::new);
+    }
+
+    public static boolean checkInteractBlacklist(ServerPlayer player, Level level, BlockPos pos) {
+        return checkBlockBlacklist(player, level, pos, level.getBlockState(pos).getBlock(),
+            com.sk89q.worldguard.blacklist.event.BlockInteractBlacklistEvent::new);
+    }
+
+    public static boolean checkDropBlacklist(ServerPlayer player, Level level, BlockPos pos, net.minecraft.world.item.Item item) {
+        return checkItemBlacklist(player, level, pos, item,
+            com.sk89q.worldguard.blacklist.event.ItemDropBlacklistEvent::new);
+    }
+
+    public static boolean checkAcquireBlacklist(ServerPlayer player, Level level, BlockPos pos, net.minecraft.world.item.Item item) {
+        return checkItemBlacklist(player, level, pos, item,
+            com.sk89q.worldguard.blacklist.event.ItemAcquireBlacklistEvent::new);
     }
 }

@@ -16,7 +16,7 @@ public abstract class FarmBlockMixin {
 
     @Inject(method = "turnToDirt", at = @At("HEAD"), cancellable = true)
     private static void onTurnToDirt(Entity entity, BlockState state, Level level, BlockPos pos, CallbackInfo ci) {
-        if (!CommonWorldGuardEvents.canTrampleCrops(level, pos)) {
+        if (!CommonWorldGuardEvents.canTrampleCrops(entity, level, pos)) {
             ci.cancel();
         }
     }

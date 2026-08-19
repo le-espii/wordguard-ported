@@ -23,11 +23,16 @@ import java.util.logging.Level;
  * efecto. La lista de claves y valores por defecto está portada línea por línea de
  * BukkitWorldConfiguration#loadConfiguration en el WorldGuard-Bukkit original, salvo los
  * campos que ese plugin declara a mayores de WorldConfiguration y que dependen de la API de
- * Bukkit (blockPotions/allowAllInteract/blockUseAtFeet/usePaperEntityOrigin, protección de
- * cofres por cartel): esos quedan fuera de alcance de este port por ahora.
+ * Bukkit (allowAllInteract/blockUseAtFeet/usePaperEntityOrigin, protección de cofres por
+ * cartel): esos quedan fuera de alcance de este port por ahora. blockPotions sí se porta,
+ * pero con {@link net.minecraft.world.effect.MobEffect} vanilla en vez de
+ * org.bukkit.potion.PotionEffectType (hallazgo H4).
  */
 public class ModWorldConfiguration extends YamlWorldConfiguration {
     private final String worldName;
+
+    /** Efectos bloqueados en este mundo (gameplay.block-potions). Ver LivingEntityEffectMixin. */
+    public java.util.Set<net.minecraft.world.effect.MobEffect> blockPotions = new HashSet<>();
 
     public ModWorldConfiguration(String worldName, File dataFolder, YAMLProcessor parentConfig) {
         File baseFolder = new File(dataFolder, "worlds/" + worldName);
@@ -62,6 +67,18 @@ public class ModWorldConfiguration extends YamlWorldConfiguration {
         this.removeInfiniteStacks = getBoolean("protection.remove-infinite-stacks", false);
         this.disableExpDrops = getBoolean("protection.disable-xp-orb-drops", false);
         this.useMaxPriorityAssociation = getBoolean("protection.use-max-priority-association", false);
+
+        this.blockPotions = new HashSet<>();
+        for (String potionName : getStringList("gameplay.block-potions", null)) {
+            net.minecraft.resources.ResourceLocation key = net.minecraft.resources.ResourceLocation.tryParse(potionName);
+            net.minecraft.world.effect.MobEffect effect = key != null
+                ? net.minecraft.core.registries.BuiltInRegistries.MOB_EFFECT.get(key) : null;
+            if (effect == null) {
+                log.warning("Unknown potion effect type '" + potionName + "'");
+                continue;
+            }
+            this.blockPotions.add(effect);
+        }
 
         this.blockPotionsAlways = getBoolean("gameplay.block-potions-overly-reliably", false);
         this.disableConduitEffects = getBoolean("gameplay.disable-conduit-effects", false);

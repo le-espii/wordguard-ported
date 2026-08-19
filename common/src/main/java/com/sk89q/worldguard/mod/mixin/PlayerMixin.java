@@ -18,7 +18,7 @@ public abstract class PlayerMixin {
     @Inject(method = "drop(Lnet/minecraft/world/item/ItemStack;ZZ)Lnet/minecraft/world/entity/item/ItemEntity;", at = @At("HEAD"), cancellable = true)
     private void onDrop(ItemStack itemStack, boolean throwRandomly, boolean retainOwnership, CallbackInfoReturnable<ItemEntity> cir) {
         Player player = (Player) (Object) this;
-        if (!CommonWorldGuardEvents.canDropItem(player)) {
+        if (!CommonWorldGuardEvents.canDropItem(player, itemStack.getItem())) {
             cir.setReturnValue(null);
         }
     }

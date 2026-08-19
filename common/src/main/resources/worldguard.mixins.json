@@ -21,7 +21,8 @@
     "SnowGolemMixin",
     "RavagerMixin",
     "CommandsMixin",
-    "FireBlockMixin"
+    "FireBlockMixin",
+    "LivingEntityEffectMixin"
   ],
   "injectors": {
     "defaultRequire": 1
