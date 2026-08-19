@@ -36,17 +36,22 @@ public abstract class ServerPlayerMixin {
 
         // Activa modo dios / respiración acuática automáticamente para jugadores del grupo
         // "wg-invincible"/"wg-amphibious" (equipo de scoreboard, ver ModPlayer#hasGroup) o
-        // con los permisos worldguard.auto-invincible/worldguard.auto-amphibious, igual que
-        // PlayerModesListener#onProcessPlayer en el original. Antes no existía ningún
+        // con el permiso worldguard.auto-invincible, igual que
+        // PlayerModesListener#onProcessPlayer en el original — incluidos los toggles
+        // useGodGroup/useGodPermission/useAmphibiousGroup de config.yml, que ahora sí se
+        // cargan (ver ModWorldConfiguration, hallazgo C2). Antes no existía ningún
         // equivalente al join (auditoría, hallazgo M6). Solo se aplica una vez por conexión;
         // set(...) ya es idempotente (no reactiva algo que el jugador desactivó a mano
         // después), así que hacerlo cada tick sería redundante e innecesariamente costoso.
         if (!worldguard$autoModesApplied) {
             worldguard$autoModesApplied = true;
-            if (localPlayer.hasGroup("wg-invincible") || localPlayer.hasPermission("worldguard.auto-invincible")) {
+            com.sk89q.worldguard.config.ConfigurationManager globalConfig =
+                WorldGuard.getInstance().getPlatform().getGlobalStateManager();
+            if ((globalConfig.useGodGroup && localPlayer.hasGroup("wg-invincible"))
+                || (globalConfig.useGodPermission && localPlayer.hasPermission("worldguard.auto-invincible"))) {
                 GodMode.set(localPlayer, session, true);
             }
-            if (localPlayer.hasGroup("wg-amphibious") || localPlayer.hasPermission("worldguard.auto-amphibious")) {
+            if (globalConfig.useAmphibiousGroup && localPlayer.hasGroup("wg-amphibious")) {
                 WaterBreathing.set(localPlayer, session, true);
             }
         }
