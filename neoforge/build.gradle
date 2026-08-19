@@ -37,6 +37,14 @@ dependencies {
         exclude group: 'org.apache.logging.log4j', module: 'log4j-api'
         exclude group: 'org.apache.logging.log4j', module: 'log4j-bom'
     }
+
+    // worldguard-core depende transitivamente de worldguard-libs:core (resolución de
+    // perfiles/UUID de jugador vía ProfileService y el índice espacial PR-tree que usa el
+    // gestor de regiones) pero shadear solo "worldguard-core" arriba NO arrastra ese
+    // artefacto al jar final: compila bien (está en el classpath de compilación) pero explota
+    // en tiempo de ejecución con NoClassDefFoundError en cuanto ModWorldGuardPlatform
+    // construye su ProfileService. Hay que shadearlo aparte.
+    shade "com.sk89q.worldguard.worldguard-libs:core:${rootProject.worldguard_core_version}"
 }
 
 tasks.withType(ProcessResources).configureEach {
@@ -76,7 +84,7 @@ jar {
     
     manifest {
         attributes([
-            "MixinConfigs": "worldguard.mixins.json"
+            "MixinConfigs": "worldguard.mixins.json,worldguard-neoforge.mixins.json"
         ])
     }
 }

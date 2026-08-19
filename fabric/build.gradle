@@ -36,6 +36,15 @@ dependencies {
         exclude group: 'org.apache.logging.log4j', module: 'log4j-bom'
     }
 
+    // worldguard-core depende transitivamente de worldguard-libs:core (resolución de
+    // perfiles/UUID de jugador vía ProfileService y el índice espacial PR-tree que usa el
+    // gestor de regiones) pero incluir solo "worldguard-core" arriba NO arrastra ese
+    // artefacto al jar final: compila bien (está en el classpath de compilación) pero explota
+    // en tiempo de ejecución con NoClassDefFoundError en cuanto ModWorldGuardPlatform
+    // construye su ProfileService. Hay que shadearlo aparte.
+    implementation "com.sk89q.worldguard.worldguard-libs:core:${rootProject.worldguard_core_version}"
+    include "com.sk89q.worldguard.worldguard-libs:core:${rootProject.worldguard_core_version}"
+
     // Incluir snakeyaml para Fabric
     implementation "org.yaml:snakeyaml:2.0"
     include "org.yaml:snakeyaml:2.0"
@@ -55,9 +64,34 @@ processResources {
     }
 }
 
+// worldguard.mixins.json es de :common y por eso no lleva la clave "refmap" (NeoForge
+// corre sobre Mojmap directo: no la necesita, y si la tuviera, Mixin la aplicaría también
+// ahí y corrompería los nombres ya correctos reemplazándolos por los intermediary de Fabric
+// que trae el refmap — probado: así fue como se rompió NeoForge en un intento anterior).
+// Fabric sí necesita esa clave para poder traducir los selectores de mixin en forma de
+// String (nombres de método/target) a los nombres intermediary reales en tiempo de
+// ejecución, así que se genera aquí una copia de worldguard.mixins.json solo para el jar
+// de Fabric, con "refmap" inyectado, en vez de tocar el archivo fuente compartido.
+def fabricWorldguardMixinsJson = tasks.register("fabricWorldguardMixinsJson") {
+    def srcFile = project(":common").file("src/main/resources/worldguard.mixins.json")
+    def outFile = layout.buildDirectory.file("generated/fabricMixins/worldguard.mixins.json")
+    inputs.file(srcFile)
+    outputs.file(outFile)
+    doLast {
+        def json = new groovy.json.JsonSlurper().parse(srcFile)
+        json.refmap = "common-refmap.json"
+        def out = outFile.get().asFile
+        out.parentFile.mkdirs()
+        out.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(json))
+    }
+}
+
 jar {
     archiveFileName = "worldguard-fabric-${version}.jar"
-    from project(":common").sourceSets.main.output
+    from(project(":common").sourceSets.main.output) {
+        exclude "worldguard.mixins.json"
+    }
+    from(fabricWorldguardMixinsJson)
 }
 
 tasks.named("remapJar") {

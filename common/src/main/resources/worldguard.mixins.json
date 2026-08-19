@@ -21,8 +21,10 @@
     "SnowGolemMixin",
     "RavagerMixin",
     "CommandsMixin",
-    "FireBlockMixin",
-    "LivingEntityEffectMixin"
+    "LivingEntityEffectMixin",
+    "HopperBlockEntityMixin",
+    "ServerGamePacketListenerImplMixin",
+    "ReplaceDiskMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -40,6 +40,11 @@ public class NeoForgeWorldGuardMod {
             public Actor adaptCommandSource(CommandSourceStack source) {
                 return NeoForgeAdapter.adaptCommandSource(source);
             }
+
+            @Override
+            public net.minecraft.world.level.Level adaptLevel(com.sk89q.worldedit.world.World world) {
+                return NeoForgeAdapter.adapt(world);
+            }
         });
 
         // Inicializar el core común

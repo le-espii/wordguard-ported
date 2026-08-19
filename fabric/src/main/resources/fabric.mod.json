@@ -22,7 +22,8 @@
     ]
   },
   "mixins": [
-    "worldguard.mixins.json"
+    "worldguard.mixins.json",
+    "worldguard-fabric.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=0.15.11",

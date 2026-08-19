@@ -36,6 +36,11 @@ public class FabricWorldGuardMod implements ModInitializer {
             public Actor adaptCommandSource(CommandSourceStack source) {
                 return FabricAdapter.adaptCommandSource(source);
             }
+
+            @Override
+            public net.minecraft.world.level.Level adaptLevel(com.sk89q.worldedit.world.World world) {
+                return FabricAdapter.adapt(world);
+            }
         });
 
         // Inicializar el core de WorldGuard

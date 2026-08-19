@@ -41,6 +41,24 @@ public abstract class ServerPlayerGameModeMixin {
             return;
         }
 
+        // Protección de cofres por cartel [Lock] (interruptor nicho pendiente de la auditoría):
+        // es un sistema independiente de las regiones en el original (ChestProtectionListener
+        // no comprueba el bypass de región), así que se evalúa igual que la blacklist, antes
+        // del bypass.
+        com.sk89q.worldedit.util.Location weBreakLoc = new com.sk89q.worldedit.util.Location(
+            world,
+            com.sk89q.worldedit.math.BlockVector3.at(pos.getX(), pos.getY(), pos.getZ()).toVector3()
+        );
+        com.sk89q.worldguard.config.WorldConfiguration breakCfg = WorldGuard.getInstance().getPlatform()
+            .getGlobalStateManager().get(world);
+        if (breakCfg instanceof com.sk89q.worldguard.mod.ModWorldConfiguration modBreakCfg
+            && modBreakCfg.isChestProtected(weBreakLoc, localPlayer)) {
+            this.player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                com.sk89q.worldguard.mod.WorldGuardLang.get(this.player, "chest-protection.protected")));
+            cir.setReturnValue(false);
+            return;
+        }
+
         // Chequear bypass (ej. si es OP o tiene bypass de región)
         boolean hasBypass = WorldGuard.getInstance().getPlatform().getSessionManager().hasBypass(localPlayer, world);
         if (hasBypass) return;
@@ -99,6 +117,25 @@ public abstract class ServerPlayerGameModeMixin {
             return;
         }
 
+        // Protección de cofres por cartel [Lock] (interruptor nicho pendiente de la auditoría):
+        // sistema independiente de las regiones en el original (ChestProtectionListener no
+        // comprueba el bypass de región), así que se evalúa antes del bypass, igual que la
+        // blacklist. isChestProtected() ya filtra internamente por tipo de bloque (isChest), así
+        // que se puede llamar sin comprobar antes si pos es un cofre/horno/etc.
+        com.sk89q.worldedit.util.Location weInteractLoc = new com.sk89q.worldedit.util.Location(
+            world,
+            com.sk89q.worldedit.math.BlockVector3.at(pos.getX(), pos.getY(), pos.getZ()).toVector3()
+        );
+        com.sk89q.worldguard.config.WorldConfiguration interactCfg = WorldGuard.getInstance().getPlatform()
+            .getGlobalStateManager().get(world);
+        if (interactCfg instanceof com.sk89q.worldguard.mod.ModWorldConfiguration modInteractCfg
+            && modInteractCfg.isChestProtected(weInteractLoc, localPlayer)) {
+            player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                com.sk89q.worldguard.mod.WorldGuardLang.get(player, "chest-protection.protected")));
+            cir.setReturnValue(InteractionResult.FAIL);
+            return;
+        }
+
         // Chequear bypass
         boolean hasBypass = WorldGuard.getInstance().getPlatform().getSessionManager().hasBypass(localPlayer, world);
         if (hasBypass) return;
@@ -122,18 +159,15 @@ public abstract class ServerPlayerGameModeMixin {
         net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
         net.minecraft.world.level.block.Block block = state.getBlock();
         com.sk89q.worldguard.protection.flags.StateFlag[] interactFlags = {Flags.INTERACT};
-        String className = block.getClass().getName();
         if (block instanceof net.minecraft.world.level.block.ChestBlock
             || block instanceof net.minecraft.world.level.block.EnderChestBlock
-            || className.contains("Chest")
-            || className.contains("Furnace")
-            || className.contains("Dispenser")
-            || className.contains("Dropper")
-            || className.contains("Hopper")
-            || className.contains("Barrel")
-            || className.contains("ShulkerBox")
-            || className.contains("BrewingStand")
-            || className.contains("Crafter")) {
+            || block instanceof net.minecraft.world.level.block.AbstractFurnaceBlock
+            || block instanceof net.minecraft.world.level.block.DispenserBlock
+            || block instanceof net.minecraft.world.level.block.HopperBlock
+            || block instanceof net.minecraft.world.level.block.BarrelBlock
+            || block instanceof net.minecraft.world.level.block.ShulkerBoxBlock
+            || block instanceof net.minecraft.world.level.block.BrewingStandBlock
+            || block instanceof net.minecraft.world.level.block.CrafterBlock) {
             interactFlags = new com.sk89q.worldguard.protection.flags.StateFlag[]{Flags.CHEST_ACCESS};
         } else if (block instanceof net.minecraft.world.level.block.AnvilBlock) {
             interactFlags = new com.sk89q.worldguard.protection.flags.StateFlag[]{Flags.USE_ANVIL};
@@ -146,11 +180,11 @@ public abstract class ServerPlayerGameModeMixin {
         } else if (block instanceof net.minecraft.world.level.block.DoorBlock
             || block instanceof net.minecraft.world.level.block.TrapDoorBlock
             || block instanceof net.minecraft.world.level.block.FenceGateBlock
-            || className.contains("Lever")
-            || className.contains("Button")
-            || className.contains("Repeater")
-            || className.contains("Comparator")
-            || className.contains("Lectern")) {
+            || block instanceof net.minecraft.world.level.block.LeverBlock
+            || block instanceof net.minecraft.world.level.block.ButtonBlock
+            || block instanceof net.minecraft.world.level.block.RepeaterBlock
+            || block instanceof net.minecraft.world.level.block.ComparatorBlock
+            || block instanceof net.minecraft.world.level.block.LecternBlock) {
             interactFlags = new com.sk89q.worldguard.protection.flags.StateFlag[]{Flags.INTERACT, Flags.USE};
         }
 
@@ -200,6 +234,27 @@ public abstract class ServerPlayerGameModeMixin {
             boolean canPlaceEntity = query.testState(wePlaceLoc, localPlayer, Flags.BUILD);
             if (!canPlaceEntity) {
                 CommonWorldGuardEvents.tellDenyMessage(player, wePlaceLoc, localPlayer, "entity_place");
+                cir.setReturnValue(InteractionResult.FAIL);
+                return;
+            }
+        }
+
+        // Protección de cofres por cartel [Lock] (interruptor nicho pendiente de la auditoría):
+        // impide colocar un cofre/horno/dispensador/dropper en el hueco que un cartel [Lock]
+        // ajeno ya reclama, igual que ChestProtectionListener#onPlaceBlock en el original (usa
+        // el mismo conjunto legado de tipos "cofre" que BukkitSignChestProtection, más estrecho
+        // que Flags.CHEST_ACCESS de arriba: no incluye barril/hopper/shulker/etc.).
+        if (stack.getItem() instanceof net.minecraft.world.item.BlockItem placeBlockItem) {
+            net.minecraft.world.level.block.Block placedBlock = placeBlockItem.getBlock();
+            boolean isLegacyChestType = placedBlock instanceof net.minecraft.world.level.block.ChestBlock
+                || placedBlock instanceof net.minecraft.world.level.block.DispenserBlock
+                || placedBlock instanceof net.minecraft.world.level.block.FurnaceBlock;
+            com.sk89q.worldguard.config.WorldConfiguration placeCfg = WorldGuard.getInstance().getPlatform()
+                .getGlobalStateManager().get(world);
+            if (isLegacyChestType && placeCfg instanceof com.sk89q.worldguard.mod.ModWorldConfiguration modPlaceCfg
+                && modPlaceCfg.isChestProtected(wePlaceLoc, localPlayer)) {
+                player.sendSystemMessage(net.minecraft.network.chat.Component.literal(
+                    com.sk89q.worldguard.mod.WorldGuardLang.get(player, "chest-protection.protected-placement")));
                 cir.setReturnValue(InteractionResult.FAIL);
                 return;
             }

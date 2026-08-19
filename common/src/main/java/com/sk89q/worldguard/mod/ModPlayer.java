@@ -332,7 +332,17 @@ public class ModPlayer implements LocalPlayer {
     @Override
     public void print(com.sk89q.worldedit.util.formatting.text.Component msg) { wePlayer.print(msg); }
     @Override
-    public boolean hasPermission(String perm) { return wePlayer.hasPermission(perm); }
+    public boolean hasPermission(String perm) {
+        // op-permissions de config.yml (auditoría, interruptores nicho): si está en true (el
+        // valor por defecto del original) los OP nivel 2+ pasan cualquier permiso de
+        // WorldGuard, igual que WorldGuardPlugin#hasPermission en el Bukkit original.
+        if (mcPlayer.hasPermissions(2)
+            && com.sk89q.worldguard.WorldGuard.getInstance().getPlatform()
+                .getGlobalStateManager().get(getWorld()).opPermissions) {
+            return true;
+        }
+        return wePlayer.hasPermission(perm);
+    }
     @Override
     public boolean isPlayer() { return true; }
     @Override

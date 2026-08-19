@@ -34,6 +34,47 @@ public class ModWorldConfiguration extends YamlWorldConfiguration {
     /** Efectos bloqueados en este mundo (gameplay.block-potions). Ver LivingEntityEffectMixin. */
     public java.util.Set<net.minecraft.world.effect.MobEffect> blockPotions = new HashSet<>();
 
+    /**
+     * Protección de cofres por cartel [Lock] (interruptor nicho pendiente de la auditoría):
+     * puerto de BukkitWorldConfiguration#chestProtection/isChestProtected/getChestProtection.
+     */
+    private final com.sk89q.worldguard.chest.ChestProtection chestProtection = new ModSignChestProtection();
+
+    public boolean isChestProtected(com.sk89q.worldedit.util.Location block, com.sk89q.worldguard.LocalPlayer player) {
+        if (!this.signChestProtection) return false;
+        if (player.hasPermission("worldguard.chest-protection.override")
+            || player.hasPermission("worldguard.override.chest-protection")) {
+            return false;
+        }
+        return this.chestProtection.isProtected(block, player);
+    }
+
+    public boolean isChestProtected(com.sk89q.worldedit.util.Location block) {
+        return this.signChestProtection && this.chestProtection.isProtected(block, null);
+    }
+
+    public boolean isChestProtectedPlacement(com.sk89q.worldedit.util.Location block, com.sk89q.worldguard.LocalPlayer player) {
+        if (!this.signChestProtection) return false;
+        if (player.hasPermission("worldguard.chest-protection.override")
+            || player.hasPermission("worldguard.override.chest-protection")) {
+            return false;
+        }
+        return this.chestProtection.isProtectedPlacement(block, player);
+    }
+
+    public boolean isAdjacentChestProtected(com.sk89q.worldedit.util.Location block, com.sk89q.worldguard.LocalPlayer player) {
+        if (!this.signChestProtection) return false;
+        if (player.hasPermission("worldguard.chest-protection.override")
+            || player.hasPermission("worldguard.override.chest-protection")) {
+            return false;
+        }
+        return this.chestProtection.isAdjacentChestProtected(block, player);
+    }
+
+    public com.sk89q.worldguard.chest.ChestProtection getChestProtection() {
+        return this.chestProtection;
+    }
+
     public ModWorldConfiguration(String worldName, File dataFolder, YAMLProcessor parentConfig) {
         File baseFolder = new File(dataFolder, "worlds/" + worldName);
         File configFile = new File(baseFolder, "config.yml");

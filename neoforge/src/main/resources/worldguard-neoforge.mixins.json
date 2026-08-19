@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "com.sk89q.worldguard.neoforge.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "FireBlockMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

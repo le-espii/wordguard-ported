@@ -57,6 +57,10 @@ public class WorldGuardModCommon {
         com.sk89q.worldedit.world.World adaptWorld(net.minecraft.world.level.Level level);
         com.sk89q.worldguard.LocalPlayer adaptPlayer(net.minecraft.server.level.ServerPlayer player);
         com.sk89q.worldedit.extension.platform.Actor adaptCommandSource(net.minecraft.commands.CommandSourceStack source);
+        // Dirección inversa de adaptWorld: hace falta para leer el bloque de cartel real
+        // (texto/NBT) detrás de una Location de WorldEdit, algo que la API de World de
+        // WorldEdit no expone (protección de cofres por cartel, interruptor nicho pendiente).
+        net.minecraft.world.level.Level adaptLevel(com.sk89q.worldedit.world.World world);
     }
 
     public static void init() {

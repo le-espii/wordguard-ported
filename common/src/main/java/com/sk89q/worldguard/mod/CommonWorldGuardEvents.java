@@ -95,6 +95,31 @@ public class CommonWorldGuardEvents {
         return new com.sk89q.worldedit.util.Location(world, com.sk89q.worldedit.math.BlockVector3.at(pos.getX(), pos.getY(), pos.getZ()).toVector3());
     }
 
+    /**
+     * Aplica Flags.FIRE_SPREAD y el interruptor duro fire.disable-all-fire-spread de
+     * config.yml (auditoría, hallazgo H1) para FireBlock#checkBurnOut(...). Vive aquí en vez
+     * de en un mixin de common porque NeoForge parchea ese método añadiéndole un Direction
+     * final que vanilla/Fabric no tiene (bug descubierto en pruebas: un solo FireBlockMixin
+     * compartido no puede tener dos firmas de handler distintas para el mismo método —
+     * Mixin valida el descriptor exacto y aborta el arranque en NeoForge sin importar
+     * require = 0). Por eso hay un FireBlockMixin fino y específico por plataforma
+     * (fabric/src y neoforge/src, cada uno con su propio worldguard-<loader>.mixins.json)
+     * que solo llama a este helper común.
+     *
+     * @return false si el fuego debe cancelarse (no quemar/incendiar el bloque vecino).
+     */
+    public static boolean checkFireBurnOut(Level level, BlockPos pos) {
+        if (WorldGuardModCommon.getAdapter() == null) return true;
+        if (level.isClientSide()) return true;
+
+        com.sk89q.worldguard.config.WorldConfiguration wcfg = getWorldConfig(level);
+        if (wcfg.disableFireSpread) {
+            return false;
+        }
+
+        return getQuery().queryState(weLoc(level, pos), (LocalPlayer) null, Flags.FIRE_SPREAD) != StateFlag.State.DENY;
+    }
+
     private static com.sk89q.worldedit.util.Location weLoc(Level level, double x, double y, double z) {
         World world = WorldGuardModCommon.getAdapter().adaptWorld(level);
         return new com.sk89q.worldedit.util.Location(world, com.sk89q.worldedit.math.BlockVector3.at(x, y, z).toVector3());
@@ -254,13 +279,9 @@ public class CommonWorldGuardEvents {
         RegionQuery query = getQuery();
         com.sk89q.worldedit.util.Location targetLoc = weLoc(level, target.blockPosition());
 
-        String className = target.getClass().getName();
-        boolean isRideable = target instanceof net.minecraft.world.entity.vehicle.Minecart 
-                || target instanceof net.minecraft.world.entity.vehicle.Boat 
-                || target instanceof net.minecraft.world.entity.Saddleable
-                || className.contains("Horse") 
-                || className.contains("Camel") 
-                || className.contains("Strider");
+        boolean isRideable = target instanceof net.minecraft.world.entity.vehicle.Minecart
+                || target instanceof net.minecraft.world.entity.vehicle.Boat
+                || target instanceof net.minecraft.world.entity.Saddleable;
 
         if (isRideable) {
             boolean canRide = query.queryState(targetLoc, localPlayer, Flags.RIDE) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY
