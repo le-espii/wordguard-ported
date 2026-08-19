@@ -1,0 +1,21 @@
+{
+  "deny.default": "§cNo tienes permiso para %s.",
+  "what.pvp": "hacer PVP aquí",
+  "what.vehicle_destroy": "destruir vehículos aquí",
+  "what.painting_destroy": "destruir cuadros aquí",
+  "what.itemframe_destroy": "destruir marcos de ítems aquí",
+  "what.damage_animals": "dañar animales aquí",
+  "what.ride": "montar vehículos/entidades aquí",
+  "what.item_drop": "tirar ítems aquí",
+  "what.command": "ejecutar ese comando en esta región",
+  "what.build": "construir aquí",
+  "what.break": "romper bloques aquí",
+  "what.interact": "interactuar aquí",
+  "what.lighter": "usar encendedores aquí",
+  "what.vehicle_place": "colocar vehículos aquí",
+  "what.entity_place": "colocar eso aquí",
+  "dismount.denied": "§6No puedes bajarte aquí. §7No podrás volver a subir.",
+  "command.no_permission": "§cNo tienes permiso para ejecutar este comando.",
+  "command.exec_error": "§cError ejecutando el comando: %s",
+  "credits.block": "§e========================================\n§bWorldGuard Mod (NeoForge/Fabric 1.21.1)\n§7Creado por EngineHub. Portado y adaptado por: §aEspii\n§7Apoya a Espii en Patreon: §dhttps://www.patreon.com/cw/Le_Espii\n§e========================================"
+}

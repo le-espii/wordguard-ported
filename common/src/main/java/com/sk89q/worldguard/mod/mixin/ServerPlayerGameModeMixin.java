@@ -4,9 +4,9 @@ import com.sk89q.worldguard.WorldGuard;
 import com.sk89q.worldguard.protection.flags.Flags;
 import com.sk89q.worldguard.protection.regions.RegionContainer;
 import com.sk89q.worldguard.protection.regions.RegionQuery;
+import com.sk89q.worldguard.mod.CommonWorldGuardEvents;
 import com.sk89q.worldguard.mod.WorldGuardModCommon;
 import net.minecraft.core.BlockPos;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.level.ServerPlayerGameMode;
 import net.minecraft.world.InteractionHand;
@@ -48,7 +48,7 @@ public abstract class ServerPlayerGameModeMixin {
         RegionQuery query = container.createQuery();
 
         if (!query.testState(weLoc, localPlayer, Flags.BUILD, Flags.BLOCK_BREAK)) {
-            this.player.sendSystemMessage(Component.literal("§cNo tienes permiso para romper bloques aquí."));
+            CommonWorldGuardEvents.tellDenyMessage(this.player, weLoc, localPlayer, "break");
             cir.setReturnValue(false);
         }
     }
@@ -123,7 +123,7 @@ public abstract class ServerPlayerGameModeMixin {
         // Chequear interact (click derecho al bloque)
         boolean canInteract = query.testState(weLoc, localPlayer, interactFlags);
         if (!canInteract) {
-            player.sendSystemMessage(Component.literal("§cNo tienes permiso para interactuar aquí."));
+            CommonWorldGuardEvents.tellDenyMessage(player, weLoc, localPlayer, "interact");
             cir.setReturnValue(InteractionResult.FAIL);
             return;
         }
@@ -134,7 +134,7 @@ public abstract class ServerPlayerGameModeMixin {
         if (isLighter) {
             boolean allowedLighter = query.testState(wePlaceLoc, localPlayer, Flags.LIGHTER);
             if (!allowedLighter) {
-                player.sendSystemMessage(Component.literal("§cNo tienes permiso para usar encendedores aquí."));
+                CommonWorldGuardEvents.tellDenyMessage(player, wePlaceLoc, localPlayer, "lighter");
                 cir.setReturnValue(InteractionResult.FAIL);
                 return;
             }
@@ -146,7 +146,7 @@ public abstract class ServerPlayerGameModeMixin {
         if (isVehicleItem) {
             boolean allowedVehicle = query.testState(wePlaceLoc, localPlayer, Flags.BUILD, Flags.PLACE_VEHICLE);
             if (!allowedVehicle) {
-                player.sendSystemMessage(Component.literal("§cNo tienes permiso para colocar vehículos aquí."));
+                CommonWorldGuardEvents.tellDenyMessage(player, wePlaceLoc, localPlayer, "vehicle_place");
                 cir.setReturnValue(InteractionResult.FAIL);
                 return;
             }
@@ -161,7 +161,7 @@ public abstract class ServerPlayerGameModeMixin {
         if (isEntityPlacementItem) {
             boolean canPlaceEntity = query.testState(wePlaceLoc, localPlayer, Flags.BUILD);
             if (!canPlaceEntity) {
-                player.sendSystemMessage(Component.literal("§cNo tienes permiso para colocar eso aquí."));
+                CommonWorldGuardEvents.tellDenyMessage(player, wePlaceLoc, localPlayer, "entity_place");
                 cir.setReturnValue(InteractionResult.FAIL);
                 return;
             }
@@ -176,7 +176,7 @@ public abstract class ServerPlayerGameModeMixin {
         if (isPlacingItem) {
             boolean canPlace = query.testState(wePlaceLoc, localPlayer, Flags.BUILD, Flags.BLOCK_PLACE);
             if (!canPlace) {
-                player.sendSystemMessage(Component.literal("§cNo tienes permiso para construir aquí."));
+                CommonWorldGuardEvents.tellDenyMessage(player, wePlaceLoc, localPlayer, "build");
                 cir.setReturnValue(InteractionResult.FAIL);
             }
         }

@@ -59,7 +59,7 @@ public abstract class EntityMixin {
         boolean canDismount = query.queryState(weLoc, localPlayer, Flags.RIDE) != StateFlag.State.DENY
             && query.queryState(weLoc, localPlayer, Flags.INTERACT) != StateFlag.State.DENY;
         if (!canDismount) {
-            player.sendSystemMessage(Component.literal("§6No puedes bajarte aquí. §7No podrás volver a subir."));
+            player.sendSystemMessage(Component.literal(com.sk89q.worldguard.mod.WorldGuardLang.get(player, "dismount.denied")));
             ci.cancel();
         }
     }

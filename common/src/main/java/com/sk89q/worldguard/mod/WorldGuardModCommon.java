@@ -160,18 +160,14 @@ public class WorldGuardModCommon {
         String[] args = parseArguments(argsString);
 
         if (commandName.equalsIgnoreCase("worldguard") && (args.length == 0 || args[0].equalsIgnoreCase("version") || args[0].equalsIgnoreCase("credits"))) {
-            source.sendSuccess(() -> Component.literal("§e========================================\n" +
-                                                      "§bWorldGuard Mod (NeoForge/Fabric 1.21.1)\n" +
-                                                      "§7Creado por EngineHub. Portado y adaptado por: §aEspii\n" +
-                                                      "§7Apoya a Espii en Patreon: §dhttps://www.patreon.com/cw/Le_Espii\n" +
-                                                      "§e========================================"), false);
+            source.sendSuccess(() -> Component.literal(WorldGuardLang.get(source.getPlayer(), "credits.block")), false);
         }
 
         try {
             WorldGuardModCommon.getCommands().execute(commandName, args, actor, actor);
             return 1;
         } catch (com.sk89q.minecraft.util.commands.CommandPermissionsException e) {
-            source.sendFailure(Component.literal("§cNo tienes permiso para ejecutar este comando."));
+            source.sendFailure(Component.literal(WorldGuardLang.get(source.getPlayer(), "command.no_permission")));
             return 0;
         } catch (com.sk89q.minecraft.util.commands.CommandUsageException e) {
             source.sendFailure(Component.literal("§c" + e.getMessage()));
@@ -181,7 +177,7 @@ public class WorldGuardModCommon {
             return 0;
         } catch (Throwable t) {
             LOGGER.error("Error executing command: " + commandName + " " + argsString, t);
-            source.sendFailure(Component.literal("§cError ejecutando el comando: " + t.getMessage()));
+            source.sendFailure(Component.literal(WorldGuardLang.get(source.getPlayer(), "command.exec_error", t.getMessage())));
             return 0;
         }
     }

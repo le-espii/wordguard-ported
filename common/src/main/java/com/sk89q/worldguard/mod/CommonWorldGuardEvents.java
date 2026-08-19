@@ -32,12 +32,51 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.state.BlockState;
 
+import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class CommonWorldGuardEvents {
 
+    // Límite de frecuencia de mensajes de denegación por jugador (auditoría, hallazgo M1):
+    // el original limita a un mensaje cada 500ms por jugador (RegionProtectionListener,
+    // vía WGMetadata) para no inundar el chat cuando se repite la misma acción bloqueada
+    // muchas veces por segundo (p. ej. mantener presionado el botón de romper un bloque).
+    private static final Map<UUID, Long> worldguard$lastDenyMessage = new ConcurrentHashMap<>();
+    private static final long DENY_MESSAGE_COOLDOWN_MS = 500;
+
     private static RegionQuery getQuery() {
         return WorldGuard.getInstance().getPlatform().getRegionContainer().createQuery();
+    }
+
+    /**
+     * Envía un mensaje de denegación al jugador, respetando el flag de región
+     * Flags.DENY_MESSAGE (mensaje personalizable con el macro %what%) y el límite de
+     * frecuencia de 500ms, igual que RegionProtectionListener#tellErrorMessage en el
+     * original. Antes el port mandaba un mensaje fijo en español en cada intento, sin
+     * límite ni forma de personalizarlo por región (hallazgo M1).
+     *
+     * @param whatKey clave de localización (sufijo de "what.", ver lang/*.json) de la frase
+     *                que describe la acción bloqueada, p. ej. "build" para "what.build".
+     *                Se usa tanto para armar el mensaje por defecto como para el macro
+     *                %what% dentro de un DENY_MESSAGE personalizado.
+     */
+    public static void tellDenyMessage(ServerPlayer player, com.sk89q.worldedit.util.Location loc, LocalPlayer localPlayer, String whatKey) {
+        if (player == null) return;
+
+        long now = System.currentTimeMillis();
+        UUID id = player.getUUID();
+        Long last = worldguard$lastDenyMessage.get(id);
+        if (last != null && now - last < DENY_MESSAGE_COOLDOWN_MS) {
+            return;
+        }
+        worldguard$lastDenyMessage.put(id, now);
+
+        String what = WorldGuardLang.get(player, "what." + whatKey);
+        String custom = getQuery().queryValue(loc, localPlayer, Flags.DENY_MESSAGE);
+        String msg = custom != null ? custom.replace("%what%", what) : WorldGuardLang.get(player, "deny.default", what);
+        player.sendSystemMessage(Component.literal(msg));
     }
 
     private static com.sk89q.worldedit.util.Location weLoc(Level level, BlockPos pos) {
@@ -95,7 +134,7 @@ public class CommonWorldGuardEvents {
                 boolean targetDeny = query.queryState(targetLoc, localAttacker, Flags.PVP) == com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
                 boolean attackerDeny = query.queryState(localAttacker.getLocation(), localAttacker, Flags.PVP) == com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
                 if (targetDeny || attackerDeny) {
-                    playerAttacker.sendSystemMessage(Component.literal("§cEl PVP está desactivado aquí."));
+                    tellDenyMessage(playerAttacker, targetLoc, localAttacker, "pvp");
                     return false;
                 }
             }
@@ -124,27 +163,27 @@ public class CommonWorldGuardEvents {
             // Vehículos
             if (target instanceof net.minecraft.world.entity.vehicle.Minecart || target instanceof net.minecraft.world.entity.vehicle.Boat) {
                 if (query.queryState(targetLoc, localAttacker, Flags.DESTROY_VEHICLE) == com.sk89q.worldguard.protection.flags.StateFlag.State.DENY) {
-                    playerAttacker.sendSystemMessage(Component.literal("§cNo tienes permiso para destruir vehículos aquí."));
+                    tellDenyMessage(playerAttacker, targetLoc, localAttacker, "vehicle_destroy");
                     return false;
                 }
             }
             // Cuadros e Item Frames
             else if (target instanceof Painting) {
                 if (query.queryState(targetLoc, localAttacker, Flags.ENTITY_PAINTING_DESTROY) == com.sk89q.worldguard.protection.flags.StateFlag.State.DENY) {
-                    playerAttacker.sendSystemMessage(Component.literal("§cNo tienes permiso para destruir cuadros aquí."));
+                    tellDenyMessage(playerAttacker, targetLoc, localAttacker, "painting_destroy");
                     return false;
                 }
             }
             else if (target instanceof ItemFrame) {
                 if (query.queryState(targetLoc, localAttacker, Flags.ENTITY_ITEM_FRAME_DESTROY) == com.sk89q.worldguard.protection.flags.StateFlag.State.DENY) {
-                    playerAttacker.sendSystemMessage(Component.literal("§cNo tienes permiso para destruir marcos de ítems aquí."));
+                    tellDenyMessage(playerAttacker, targetLoc, localAttacker, "itemframe_destroy");
                     return false;
                 }
             }
             // Animales
             else if (target instanceof Animal || target instanceof net.minecraft.world.entity.animal.AbstractGolem || target instanceof net.minecraft.world.entity.npc.Npc) {
                 if (query.queryState(targetLoc, localAttacker, Flags.DAMAGE_ANIMALS) == com.sk89q.worldguard.protection.flags.StateFlag.State.DENY) {
-                    playerAttacker.sendSystemMessage(Component.literal("§cNo tienes permiso para dañar animales aquí."));
+                    tellDenyMessage(playerAttacker, targetLoc, localAttacker, "damage_animals");
                     return false;
                 }
             }
@@ -187,7 +226,7 @@ public class CommonWorldGuardEvents {
             boolean canRide = query.queryState(targetLoc, localPlayer, Flags.RIDE) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY
                     && query.queryState(targetLoc, localPlayer, Flags.INTERACT) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
             if (!canRide) {
-                serverPlayer.sendSystemMessage(Component.literal("§cNo tienes permiso para montar vehículos/entidades aquí."));
+                tellDenyMessage(serverPlayer, targetLoc, localPlayer, "ride");
                 return InteractionResult.FAIL;
             }
         } else if (target instanceof net.minecraft.world.entity.decoration.ItemFrame frame && !frame.getItem().isEmpty()) {
@@ -226,7 +265,7 @@ public class CommonWorldGuardEvents {
 
         boolean canDrop = query.queryState(loc, localPlayer, Flags.ITEM_DROP) != com.sk89q.worldguard.protection.flags.StateFlag.State.DENY;
         if (!canDrop) {
-            serverPlayer.sendSystemMessage(Component.literal("§cNo tienes permiso para tirar ítems aquí."));
+            tellDenyMessage(serverPlayer, loc, localPlayer, "item_drop");
             return false;
         }
         return true;
@@ -411,7 +450,7 @@ public class CommonWorldGuardEvents {
         if (allowedCommands != null || blockedCommands != null) {
             CommandFilter filter = new CommandFilter(allowedCommands, blockedCommands);
             if (!filter.apply(command)) {
-                player.sendSystemMessage(Component.literal("§cNo tienes permiso para ejecutar ese comando en esta región."));
+                tellDenyMessage(player, loc, localPlayer, "command");
                 return false;
             }
         }
