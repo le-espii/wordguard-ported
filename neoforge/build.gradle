@@ -36,6 +36,11 @@ dependencies {
         exclude group: 'it.unimi.dsi', module: 'fastutil'
         exclude group: 'org.apache.logging.log4j', module: 'log4j-api'
         exclude group: 'org.apache.logging.log4j', module: 'log4j-bom'
+        // SnakeYAML must stay a separate module. Unpacking org.yaml.snakeyaml into this
+        // jar makes the worldguard module export those packages, which crashes the game
+        // when another mod already provides module org.yaml.snakeyaml (Krypton, OctoLib,
+        // KotlinForForge).
+        exclude group: 'org.yaml', module: 'snakeyaml'
     }
 
     // worldguard-core depende transitivamente de worldguard-libs:core (resolución de
@@ -44,7 +49,18 @@ dependencies {
     // artefacto al jar final: compila bien (está en el classpath de compilación) pero explota
     // en tiempo de ejecución con NoClassDefFoundError en cuanto ModWorldGuardPlatform
     // construye su ProfileService. Hay que shadearlo aparte.
-    shade "com.sk89q.worldguard.worldguard-libs:core:${rootProject.worldguard_core_version}"
+    shade("com.sk89q.worldguard.worldguard-libs:core:${rootProject.worldguard_core_version}") {
+        exclude group: 'org.yaml', module: 'snakeyaml'
+    }
+
+    // Same Maven coordinate other mods already embed, so Jar-in-Jar keeps a single copy.
+    // [2.2,) accepts OctoLib; 2.4 satisfies Krypton's [2.4,) range.
+    jarJar(implementation("org.yaml:snakeyaml:2.4")) {
+        version {
+            strictly "[2.2,)"
+            prefer "2.4"
+        }
+    }
 }
 
 tasks.withType(ProcessResources).configureEach {
@@ -77,6 +93,8 @@ jar {
     } {
         exclude "module-info.class"
         exclude "META-INF/versions/*/module-info.class"
+        exclude "org/yaml/**"
+        exclude "META-INF/versions/**/org/yaml/**"
         exclude "META-INF/maven/**"
         exclude "META-INF/LICENSE*"
         exclude "META-INF/NOTICE*"
